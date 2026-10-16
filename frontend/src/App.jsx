@@ -1,6 +1,9 @@
 import { useState } from 'react';
 import CategoryVoteScreen from './screens/CategoryVoteScreen.jsx';
+import ArenaScreen from './screens/ArenaScreen.jsx';
 import LobbyScreen from './screens/LobbyScreen.jsx';
+import MeetingScreen from './screens/MeetingScreen.jsx';
+import RoleRevealScreen from './screens/RoleRevealScreen.jsx';
 import WelcomeScreen from './screens/WelcomeScreen.jsx';
 
 const ROOM_CODE_CHARACTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -40,6 +43,15 @@ function resolvePreviewVote(votes, roomCode) {
     voteCounts,
     wasTie: tiedCategoryIds.length > 1,
   };
+}
+
+function findPreviewImpostorId(room) {
+  const roomSeed = [...room.code].reduce(
+    (sum, character) => sum + character.charCodeAt(0),
+    0,
+  );
+  const impostorIndex = roomSeed % room.players.length;
+  return room.players[impostorIndex].id;
 }
 
 function createRoomCode() {
@@ -92,6 +104,9 @@ export default function App() {
   const [categoryVotes, setCategoryVotes] = useState({});
   const [myCategoryVote, setMyCategoryVote] = useState(null);
   const [categoryResult, setCategoryResult] = useState(null);
+  const [privateRole, setPrivateRole] = useState(null);
+  const [roleRevealMessage, setRoleRevealMessage] = useState('');
+  const [hasUsedMeeting, setHasUsedMeeting] = useState(false);
 
   function enterLobby(displayName, roomCode, isCreating) {
     setRoom(buildPreviewRoom(displayName, roomCode, isCreating));
@@ -124,6 +139,9 @@ export default function App() {
     setCategoryVotes(PREVIEW_PEER_VOTES);
     setMyCategoryVote(null);
     setCategoryResult(null);
+    setPrivateRole(null);
+    setRoleRevealMessage('');
+    setHasUsedMeeting(false);
     setScreen('categoryVote');
   }
 
@@ -140,13 +158,95 @@ export default function App() {
     setCategoryResult(resolvePreviewVote(nextVotes, room.code));
   }
 
+  function handleRevealRole() {
+    if (!room || !categoryResult) return;
+
+    const impostorId = findPreviewImpostorId(room);
+    const role = room.currentPlayerId === impostorId ? 'impostor' : 'civilian';
+
+    setPrivateRole(role);
+    setRoleRevealMessage('');
+    setScreen('roleReveal');
+  }
+
+  function handleContinueFromRoleReveal() {
+    setRoleRevealMessage('');
+    setScreen('arena');
+  }
+
+  function handleCallMeeting() {
+    if (!room || hasUsedMeeting) return;
+
+    setHasUsedMeeting(true);
+    setScreen('meeting');
+  }
+
+  function handleResumeCoding() {
+    setScreen('arena');
+  }
+
   function handleLeaveLobby() {
     setRoom(null);
     setLobbyMessage('');
     setCategoryVotes({});
     setMyCategoryVote(null);
     setCategoryResult(null);
+    setPrivateRole(null);
+    setRoleRevealMessage('');
+    setHasUsedMeeting(false);
     setScreen('welcome');
+  }
+
+  if (screen === 'roleReveal' && room && privateRole) {
+    const currentPlayer = room.players.find(
+      (player) => player.id === room.currentPlayerId,
+    );
+    const selectedCategory = CATEGORIES.find(
+      (category) => category.id === categoryResult?.categoryId,
+    );
+
+    return (
+      <RoleRevealScreen
+        displayName={currentPlayer?.name ?? 'Player'}
+        role={privateRole}
+        category={selectedCategory?.name ?? 'Selected category'}
+        roomCode={room.code}
+        message={roleRevealMessage}
+        onContinue={handleContinueFromRoleReveal}
+      />
+    );
+  }
+
+  if ((screen === 'arena' || screen === 'meeting') && room && privateRole && categoryResult) {
+    const selectedCategory = CATEGORIES.find(
+      (category) => category.id === categoryResult.categoryId,
+    );
+
+    return (
+      <>
+        <div hidden={screen !== 'arena'}>
+          <ArenaScreen
+            room={room}
+            role={privateRole}
+            categoryId={categoryResult.categoryId}
+            categoryName={selectedCategory?.name ?? 'Selected category'}
+            roundNumber={1}
+            totalRounds={4}
+            isPaused={screen === 'meeting'}
+            meetingAvailable={!hasUsedMeeting}
+            onCallMeeting={handleCallMeeting}
+          />
+        </div>
+        {screen === 'meeting' && (
+          <MeetingScreen
+            room={room}
+            categoryName={selectedCategory?.name ?? 'Selected category'}
+            roundNumber={1}
+            onResumeCoding={handleResumeCoding}
+          />
+        )}
+      </>
+    );
   }
 
   if (screen === 'categoryVote' && room) {
@@ -158,6 +258,7 @@ export default function App() {
         selectedCategoryId={myCategoryVote}
         result={categoryResult}
         onVote={handleCategoryVote}
+        onContinue={handleRevealRole}
       />
     );
   }

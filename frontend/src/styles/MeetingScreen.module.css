@@ -1,0 +1,75 @@
+.page { min-height: 100vh; background: radial-gradient(ellipse at 50% 0%, rgb(255 120 94 / 7%), transparent 38rem), var(--color-ink); color: var(--color-text); }
+.frame { display: flex; width: min(100% - 40px, 1120px); min-height: 100vh; flex-direction: column; margin-inline: auto; }
+.topbar, .brand, .roomMeta, .content, .panelHeader, .playerRow, .message { display: flex; }
+.topbar { min-height: 76px; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--color-line); }
+.brand { align-items: center; gap: 10px; color: var(--color-text); font-size: 0.96rem; font-weight: 800; letter-spacing: -0.04em; text-decoration: none; }
+.brandMark { display: grid; width: 32px; height: 32px; place-items: center; border: 1px solid rgb(255 120 94 / 70%); border-radius: 10px; color: var(--color-coral); font-family: var(--font-mono); font-size: 0.65rem; transform: rotate(-4deg); }
+.roomMeta { align-items: center; gap: 9px; color: #8e9c96; font-family: var(--font-mono); font-size: 0.59rem; letter-spacing: 0.1em; }
+.roomMeta strong { padding: 8px 10px; border: 1px solid #3d4b4c; border-radius: 7px; color: var(--color-lime); font-size: 0.72rem; font-weight: 600; }
+.content { flex: 1; flex-direction: column; align-items: center; gap: 28px; padding-block: 42px 50px; }
+.heading { width: min(100%, 720px); text-align: center; }
+.eyebrow, .panelEyebrow, .footer { font-family: var(--font-mono); letter-spacing: 0.1em; text-transform: uppercase; }
+.eyebrow { margin: 0 0 12px; color: #ffa18e; font-size: 0.61rem; font-weight: 700; }
+.eyebrow span { display: inline-grid; width: 18px; height: 18px; place-items: center; margin-right: 5px; border: 1px solid currentColor; border-radius: 50%; }
+.heading h1 { margin: 0; color: var(--color-text); font-size: clamp(2rem, 5vw, 3.25rem); letter-spacing: -0.055em; line-height: 1.08; }
+.heading h1 span { color: var(--color-coral); }
+.intro { max-width: 620px; margin: 14px auto 0; color: var(--color-muted); font-size: 0.9rem; line-height: 1.65; }
+.meetingGrid { display: grid; width: min(100%, 940px); grid-template-columns: minmax(0, 1.55fr) minmax(250px, 0.85fr); align-items: stretch; gap: 14px; }
+.discussionPanel, .rosterPanel { min-width: 0; padding: 20px; border: 1px solid var(--color-line); border-radius: 12px; background: var(--color-panel); }
+.panelHeader { align-items: flex-start; justify-content: space-between; gap: 14px; }
+.panelEyebrow { margin: 0 0 6px; color: #91a29d; font-size: 0.56rem; font-weight: 700; }
+.panelHeader h2 { margin: 0; font-size: 1.02rem; letter-spacing: -0.025em; }
+.timer { display: flex; flex: 0 0 auto; flex-direction: column; gap: 2px; padding: 7px 10px; border: 1px solid #45534e; border-radius: 7px; font-family: var(--font-mono); text-align: right; }
+.timer span { color: var(--color-muted); font-size: 0.49rem; letter-spacing: 0.1em; }
+.timer strong { color: var(--color-lime); font-size: 0.87rem; }
+.timerLow { border-color: rgb(255 120 94 / 65%); }
+.timerLow strong { color: var(--color-coral); }
+.contextCard { display: flex; align-items: flex-start; gap: 12px; margin-top: 18px; padding: 13px; border: 1px solid #394741; border-radius: 8px; background: var(--color-panel-raised); }
+.contextIcon { display: grid; width: 30px; height: 30px; flex: 0 0 auto; place-items: center; border-radius: 8px; background: rgb(201 240 108 / 10%); color: var(--color-lime); font-size: 1.2rem; }
+.contextCard strong { font-size: 0.78rem; }
+.contextCard p:last-child { margin: 5px 0 0; color: var(--color-muted); font-size: 0.68rem; line-height: 1.45; }
+.messages { display: flex; min-height: 150px; max-height: 310px; flex-direction: column; gap: 15px; overflow-y: auto; margin: 18px 0 14px; padding: 0 5px 0 0; list-style: none; }
+.message { align-items: flex-start; gap: 10px; }
+.messageAvatar, .playerAvatar { display: grid; width: 30px; height: 30px; flex: 0 0 auto; place-items: center; border-radius: 8px; background: #35434a; color: #eee; font-family: var(--font-mono); font-size: 0.68rem; font-weight: 700; }
+.violet { color: #c4a6ff; }
+.mint { color: #73d5b3; }
+.gold { color: #e7c46f; }
+.coral { color: #ff9988; }
+.messageAvatar.violet, .playerAvatar.violet { background: rgb(173 139 255 / 17%); }
+.messageAvatar.mint, .playerAvatar.mint { background: rgb(115 213 179 / 17%); }
+.messageAvatar.gold, .playerAvatar.gold { background: rgb(231 196 111 / 17%); }
+.messageAvatar.coral, .playerAvatar.coral { background: rgb(255 120 94 / 17%); }
+.messageBody { min-width: 0; }
+.messageBody strong { font-family: var(--font-mono); font-size: 0.65rem; }
+.messageBody p { overflow-wrap: anywhere; margin: 4px 0 0; color: #d3dcd7; font-size: 0.75rem; line-height: 1.5; }
+.messageForm { display: flex; gap: 8px; }
+.messageForm input { width: 100%; min-width: 0; padding: 11px 12px; border: 1px solid #40504c; border-radius: 7px; background: #131b20; color: var(--color-text); font: inherit; font-size: 0.7rem; }
+.messageForm input::placeholder { color: #82908b; }
+.messageForm button { flex: 0 0 auto; padding-inline: 13px; border: 1px solid #506047; border-radius: 7px; background: #d7ee9a; color: #1a241b; cursor: pointer; font-size: 0.68rem; font-weight: 800; }
+.messageForm button:hover { background: var(--color-lime); }
+.notice { min-height: 1em; margin: 8px 0 0; color: #91a099; font-size: 0.59rem; line-height: 1.4; }
+.playerCount { display: grid; width: 27px; height: 27px; place-items: center; border: 1px solid #45534e; border-radius: 7px; color: var(--color-lime); font-family: var(--font-mono); font-size: 0.68rem; }
+.playerList { display: grid; gap: 2px; margin: 14px 0 0; padding: 0; list-style: none; }
+.playerRow { min-width: 0; align-items: center; gap: 9px; padding: 9px 0; }
+.playerRow + .playerRow { border-top: 1px solid rgb(52 66 72 / 65%); }
+.playerName { overflow: hidden; flex: 1; color: #dce3de; font-size: 0.71rem; text-overflow: ellipsis; white-space: nowrap; }
+.youTag, .presentTag { color: var(--color-lime); font-family: var(--font-mono); font-size: 0.48rem; font-weight: 700; letter-spacing: 0.06em; }
+.presentTag { color: #83928c; }
+.guideline { display: flex; align-items: flex-start; gap: 10px; margin-top: 15px; padding: 12px; border: 1px solid #3c493f; border-radius: 8px; background: rgb(201 240 108 / 5%); }
+.guideline > span { color: var(--color-lime); }
+.guideline p { margin: 0; color: #b5c1bb; font-size: 0.67rem; line-height: 1.5; }
+.resumeButton { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 10px; margin-top: 18px; padding: 12px; border: 1px solid rgb(255 120 94 / 50%); border-radius: 7px; background: rgb(255 120 94 / 10%); color: #ffa18e; cursor: pointer; font-size: 0.68rem; font-weight: 750; }
+.resumeButton:hover { background: rgb(255 120 94 / 17%); }
+.previewNote { margin: 9px 0 0; color: #899790; font-size: 0.61rem; line-height: 1.45; }
+.timeUp { margin: -12px 0 0; color: #f0c478; font-size: 0.73rem; text-align: center; }
+.footer { display: flex; justify-content: space-between; gap: 14px; padding-block: 18px; border-top: 1px solid var(--color-line); color: #82918b; font-size: 0.54rem; }
+.srOnly { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; clip-path: inset(50%); }
+
+@media (max-width: 720px) {
+  .frame { width: min(100% - 24px, 540px); }
+  .content { gap: 20px; padding-block: 32px; }
+  .meetingGrid { grid-template-columns: minmax(0, 1fr); }
+  .discussionPanel, .rosterPanel { padding: 16px; }
+  .messages { min-height: 120px; }
+  .footer { flex-direction: column; font-size: 0.5rem; }
+}

@@ -1,0 +1,282 @@
+.page,
+.frame {
+  min-height: 100vh;
+}
+
+.page {
+  background:
+    radial-gradient(ellipse at 50% 34%, var(--role-glow), transparent 30rem),
+    var(--color-ink);
+}
+
+.civilian { --role-color: var(--color-mint); --role-glow: rgb(115 213 179 / 10%); }
+.impostor { --role-color: var(--color-coral); --role-glow: rgb(255 120 94 / 10%); }
+
+.frame {
+  width: min(100% - 64px, 1080px);
+  margin-inline: auto;
+}
+
+.topbar,
+.brand,
+.roomMeta,
+.content,
+.privateNotice,
+.assignment,
+.matchDetails,
+.footer {
+  display: flex;
+}
+
+.topbar {
+  min-height: 82px;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--color-line);
+}
+
+.brand {
+  align-items: center;
+  gap: 11px;
+  color: var(--color-text);
+  font-size: 1rem;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  text-decoration: none;
+}
+
+.brandMark {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border: 1px solid rgb(255 120 94 / 70%);
+  border-radius: 11px;
+  color: var(--color-coral);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  letter-spacing: -0.08em;
+  transform: rotate(-4deg);
+}
+
+.roomMeta {
+  align-items: center;
+  gap: 9px;
+  color: #85928e;
+  font-family: var(--font-mono);
+  font-size: 0.61rem;
+  letter-spacing: 0.09em;
+}
+
+.roomMeta strong {
+  padding: 8px 10px;
+  border: 1px solid #3d4b4c;
+  border-radius: 7px;
+  color: var(--color-lime);
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+}
+
+.content {
+  min-height: calc(100vh - 140px);
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding-block: 36px 48px;
+}
+
+.privateNotice {
+  align-items: center;
+  gap: 9px;
+  margin: 0 0 17px;
+  color: var(--role-color);
+  font-family: var(--font-mono);
+  font-size: 0.59rem;
+  letter-spacing: 0.09em;
+  text-align: center;
+}
+
+.roleCard {
+  width: min(100%, 590px);
+  padding: 37px 42px 25px;
+  border: 1px solid color-mix(in srgb, var(--role-color), #344248 65%);
+  border-radius: 20px;
+  background: linear-gradient(145deg, #1c292f, #172127 72%);
+  box-shadow: 0 28px 90px rgb(0 0 0 / 27%);
+  text-align: center;
+}
+
+.roleSymbol {
+  display: grid;
+  width: 68px;
+  height: 68px;
+  margin: 0 auto 17px;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--role-color), transparent 58%);
+  border-radius: 21px;
+  background: color-mix(in srgb, var(--role-color), transparent 90%);
+  color: var(--role-color);
+  font-size: 2rem;
+}
+
+.revealLabel {
+  margin: 0 0 7px;
+  color: #9ca9a5;
+  font-size: 0.7rem;
+}
+
+.roleName {
+  margin: 0;
+  color: var(--role-color);
+  font-family: var(--font-mono);
+  font-size: 0.69rem;
+  font-weight: 500;
+  letter-spacing: 0.17em;
+  text-transform: uppercase;
+}
+
+.roleCard h1 {
+  margin: 12px 0 0;
+  color: var(--color-text);
+  font-size: clamp(2rem, 5vw, 3.15rem);
+  font-weight: 700;
+  letter-spacing: -0.075em;
+  line-height: 1.08;
+}
+
+.description {
+  max-width: 440px;
+  margin: 14px auto 0;
+  color: #aab6b2;
+  font-size: 0.81rem;
+  line-height: 1.7;
+}
+
+.divider {
+  height: 1px;
+  margin: 25px 0 19px;
+  background: var(--color-line);
+}
+
+.assignment {
+  align-items: flex-start;
+  gap: 12px;
+  padding: 15px;
+  border: 1px solid #344248;
+  border-radius: 11px;
+  background: #172228;
+  text-align: left;
+}
+
+.assignmentIcon {
+  display: grid;
+  width: 27px;
+  height: 27px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--role-color), transparent 88%);
+  color: var(--role-color);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+}
+
+.assignment h2 {
+  margin: 0;
+  color: var(--color-text);
+  font-size: 0.7rem;
+}
+
+.assignment p {
+  margin: 5px 0 0;
+  color: #9ba8a3;
+  font-size: 0.66rem;
+  line-height: 1.6;
+}
+
+.matchDetails {
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 16px;
+  color: #899692;
+  font-family: var(--font-mono);
+  font-size: 0.57rem;
+  letter-spacing: 0.08em;
+  text-align: left;
+}
+
+.matchDetails strong {
+  color: var(--color-text);
+  font-family: 'Segoe UI', sans-serif;
+  font-size: 0.67rem;
+  letter-spacing: 0;
+  text-align: right;
+}
+
+.continueButton {
+  display: flex;
+  width: 100%;
+  min-height: 49px;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 22px;
+  padding-inline: 16px;
+  border: 0;
+  border-radius: 9px;
+  background: var(--color-lime);
+  color: #172019;
+  cursor: pointer;
+  font-size: 0.76rem;
+  font-weight: 700;
+  transition: transform 140ms ease;
+}
+
+.continueButton:hover {
+  transform: translateY(-2px);
+}
+
+.nextStep {
+  min-height: 18px;
+  margin: 11px 0 0;
+  color: #899692;
+  font-family: var(--font-mono);
+  font-size: 0.57rem;
+  line-height: 1.55;
+}
+
+.previewNote {
+  max-width: 590px;
+  margin: 14px 0 0;
+  color: #7f8c88;
+  font-family: var(--font-mono);
+  font-size: 0.53rem;
+  line-height: 1.6;
+  text-align: center;
+}
+
+.footer {
+  min-height: 58px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-top: 1px solid var(--color-line);
+  color: #82908d;
+  font-family: var(--font-mono);
+  font-size: 0.57rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+@media (max-width: 560px) {
+  .frame { width: min(100% - 30px, 440px); }
+  .content { min-height: auto; padding-block: 39px 43px; }
+  .roleCard { padding: 29px 20px 21px; }
+  .roleCard h1 { font-size: clamp(1.9rem, 8vw, 2.6rem); }
+  .footer { align-items: flex-start; flex-direction: column; justify-content: center; padding-block: 13px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .continueButton { transition: none; }
+}

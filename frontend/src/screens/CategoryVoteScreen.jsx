@@ -7,6 +7,7 @@ export default function CategoryVoteScreen({
   selectedCategoryId,
   result,
   onVote,
+  onContinue,
 }) {
   const selectedCategory = categories.find(
     (category) => category.id === selectedCategoryId,
@@ -110,6 +111,12 @@ export default function CategoryVoteScreen({
                 </>
               )}
             </div>
+
+            {result && winningCategory && (
+              <button className={styles.continueButton} onClick={onContinue} type="button">
+                Reveal my role <span aria-hidden="true">→</span>
+              </button>
+            )}
 
             <p className={styles.previewNote}>
               This preview includes three simulated player votes. Vote counts and the result are local demo data.
