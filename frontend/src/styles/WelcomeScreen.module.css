@@ -1,0 +1,470 @@
+.page,
+.frame {
+  min-height: 100vh;
+}
+
+.page {
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse at 17% 15%, rgb(115 213 179 / 9%), transparent 34rem),
+    radial-gradient(ellipse at 85% 92%, rgb(255 120 94 / 8%), transparent 32rem),
+    var(--color-ink);
+}
+
+.frame {
+  width: min(100% - 64px, 1240px);
+  margin-inline: auto;
+}
+
+.topbar,
+.brand,
+.content,
+.gameFacts,
+.cardHeading,
+.inputMeta,
+.joinRow,
+.footer {
+  display: flex;
+}
+
+.topbar {
+  min-height: 82px;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--color-line);
+}
+
+.brand {
+  align-items: center;
+  gap: 11px;
+  color: var(--color-text);
+  font-size: 1rem;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  text-decoration: none;
+}
+
+.brandMark {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border: 1px solid rgb(255 120 94 / 70%);
+  border-radius: 11px;
+  color: var(--color-coral);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  letter-spacing: -0.08em;
+  transform: rotate(-4deg);
+}
+
+.topbarNote,
+.footer,
+.kicker,
+.cardEyebrow,
+.roomCodeLabel {
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+}
+
+.topbarNote {
+  color: var(--color-muted);
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+}
+
+.content {
+  min-height: calc(100vh - 140px);
+  align-items: center;
+  justify-content: space-between;
+  gap: clamp(48px, 8vw, 116px);
+  padding-block: 66px 76px;
+}
+
+.intro {
+  flex: 1 1 0;
+  max-width: 570px;
+}
+
+.kicker {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 24px;
+  color: var(--color-mint);
+  font-size: 0.69rem;
+  letter-spacing: 0.095em;
+}
+
+.kickerDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-lime);
+  box-shadow: 0 0 18px rgb(201 240 108 / 70%);
+}
+
+.intro h1 {
+  margin: 0;
+  color: var(--color-text);
+  font-size: clamp(3.1rem, 6.2vw, 5.8rem);
+  font-weight: 700;
+  letter-spacing: -0.085em;
+  line-height: 0.99;
+}
+
+.intro h1 span {
+  color: var(--color-coral);
+}
+
+.description {
+  max-width: 450px;
+  margin: 25px 0 0;
+  color: #bbc4c0;
+  font-size: 1rem;
+  line-height: 1.8;
+}
+
+.gameFacts {
+  align-items: center;
+  gap: 24px;
+  margin-top: 43px;
+}
+
+.gameFacts div {
+  display: grid;
+  gap: 4px;
+}
+
+.factValue {
+  color: var(--color-text);
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.factLabel {
+  color: var(--color-muted);
+  font-family: var(--font-mono);
+  font-size: 0.61rem;
+  letter-spacing: 0.035em;
+  text-transform: uppercase;
+}
+
+.factDivider {
+  width: 1px;
+  height: 34px;
+  background: var(--color-line);
+}
+
+.entryCard {
+  flex: 0 1 440px;
+  padding: 33px;
+  border: 1px solid #344248;
+  border-radius: 19px;
+  background: linear-gradient(145deg, #1c292f, #172127 72%);
+  box-shadow: 0 28px 90px rgb(0 0 0 / 26%);
+}
+
+.cardHeading {
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 28px;
+}
+
+.cardEyebrow {
+  margin: 0 0 9px;
+  color: var(--color-mint);
+  font-size: 0.62rem;
+  letter-spacing: 0.1em;
+}
+
+.cardHeading h2 {
+  margin: 0;
+  color: var(--color-text);
+  font-size: 1.42rem;
+  letter-spacing: -0.055em;
+}
+
+.cardGlyph {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 12px;
+  background: rgb(201 240 108 / 10%);
+  color: var(--color-lime);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+}
+
+.fieldLabel {
+  display: block;
+  margin-bottom: 9px;
+  color: var(--color-text);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.textInput {
+  width: 100%;
+  min-height: 50px;
+  padding: 0 14px;
+  border: 1px solid #46565b;
+  border-radius: 9px;
+  background: #111a20;
+  color: var(--color-text);
+  transition: border-color 140ms ease, background-color 140ms ease;
+}
+
+.textInput::placeholder {
+  color: #74827f;
+}
+
+.textInput:focus {
+  border-color: var(--color-mint);
+  background: #131e24;
+  outline: none;
+}
+
+.textInput[aria-invalid='true'] {
+  border-color: var(--color-coral);
+}
+
+.inputMeta {
+  min-height: 29px;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 8px;
+  color: #82908d;
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+}
+
+.fieldHint,
+.errorText {
+  margin: 0;
+  font-size: 0.67rem;
+  line-height: 1.5;
+}
+
+.fieldHint {
+  color: #899692;
+}
+
+.errorText {
+  color: #ff9b89;
+}
+
+.createForm {
+  margin-top: 14px;
+}
+
+.createButton,
+.joinButton,
+.copyButton,
+.backButton,
+.readyButton,
+.startButton {
+  border: 0;
+  cursor: pointer;
+  font-weight: 700;
+  transition: transform 140ms ease, background-color 140ms ease, border-color 140ms ease;
+}
+
+.createButton {
+  display: flex;
+  width: 100%;
+  min-height: 53px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 17px;
+  border-radius: 9px;
+  background: var(--color-lime);
+  color: #152019;
+  font-size: 0.88rem;
+}
+
+.createButton span:last-child {
+  font-size: 1.25rem;
+}
+
+.createButton:hover,
+.joinButton:hover,
+.readyButton:hover:not(:disabled),
+.startButton:hover:not(:disabled) {
+  transform: translateY(-2px);
+}
+
+.separator {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 24px 0 21px;
+  color: #7f8b88;
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+}
+
+.separator span:first-child,
+.separator span:last-child {
+  height: 1px;
+  flex: 1;
+  background: var(--color-line);
+}
+
+.joinRow {
+  gap: 9px;
+}
+
+.codeInput {
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
+  letter-spacing: 0.16em;
+}
+
+.joinButton {
+  min-width: 82px;
+  padding-inline: 17px;
+  border: 1px solid #52635e;
+  border-radius: 9px;
+  background: #293832;
+  color: var(--color-mint);
+}
+
+.joinButton:hover {
+  border-color: var(--color-mint);
+  background: #30463c;
+}
+
+.joinForm > .fieldHint,
+.joinForm > .errorText {
+  margin-top: 8px;
+}
+
+.previewNote {
+  display: flex;
+  gap: 9px;
+  margin: 24px 0 0;
+  padding-top: 17px;
+  border-top: 1px solid var(--color-line);
+  color: #899692;
+  font-size: 0.66rem;
+  line-height: 1.6;
+}
+
+.previewNote span {
+  color: var(--color-coral);
+}
+
+.footer {
+  min-height: 58px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-top: 1px solid var(--color-line);
+  color: #82908d;
+  font-size: 0.57rem;
+  letter-spacing: 0.08em;
+}
+
+@media (max-width: 850px) {
+  .frame {
+    width: min(100% - 40px, 620px);
+  }
+
+  .content {
+    min-height: auto;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 40px;
+    padding-block: 54px 56px;
+  }
+
+  .intro {
+    max-width: 620px;
+  }
+
+  .intro h1 {
+    font-size: clamp(3.2rem, 10vw, 5.3rem);
+  }
+
+  .entryCard {
+    flex-basis: auto;
+  }
+}
+
+@media (max-width: 480px) {
+  .frame {
+    width: min(100% - 30px, 420px);
+  }
+
+  .topbar {
+    min-height: 68px;
+  }
+
+  .topbarNote {
+    max-width: 125px;
+    text-align: right;
+    line-height: 1.5;
+  }
+
+  .content {
+    gap: 32px;
+    padding-block: 39px 43px;
+  }
+
+  .kicker {
+    margin-bottom: 19px;
+    font-size: 0.59rem;
+  }
+
+  .intro h1 {
+    font-size: clamp(2.7rem, 12vw, 3.5rem);
+  }
+
+  .description {
+    margin-top: 19px;
+    font-size: 0.91rem;
+  }
+
+  .gameFacts {
+    gap: 15px;
+    margin-top: 29px;
+  }
+
+  .factValue {
+    font-size: 0.89rem;
+  }
+
+  .factLabel {
+    font-size: 0.52rem;
+  }
+
+  .entryCard {
+    padding: 24px 20px;
+  }
+
+  .cardHeading h2 {
+    font-size: 1.25rem;
+  }
+
+  .footer {
+    align-items: flex-start;
+    flex-direction: column;
+    justify-content: center;
+    padding-block: 13px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .textInput,
+  .createButton,
+  .joinButton {
+    transition: none;
+  }
+}
