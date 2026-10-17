@@ -1,6 +1,5 @@
 import styles from '../styles/VoteScreen.module.css';
-
-const SKIP_VOTE = 'skip';
+import { SKIP_VOTE } from '../data/mockMatch.js';
 
 export default function VoteScreen({
   room,

@@ -43,7 +43,8 @@ button {
 
 button:focus-visible,
 input:focus-visible,
-a:focus-visible {
+a:focus-visible,
+summary:focus-visible {
   outline: 3px solid var(--color-lime);
   outline-offset: 3px;
 }

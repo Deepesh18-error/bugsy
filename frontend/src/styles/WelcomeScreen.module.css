@@ -299,6 +299,13 @@
   transform: translateY(-2px);
 }
 
+.createButton:disabled,
+.joinButton:disabled {
+  cursor: wait;
+  opacity: 0.72;
+  transform: none;
+}
+
 .separator {
   display: flex;
   align-items: center;
@@ -345,6 +352,28 @@
 .joinForm > .errorText {
   margin-top: 8px;
 }
+
+.previewCodes {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--color-line);
+  color: #9ba7a2;
+  font-size: 0.65rem;
+  line-height: 1.5;
+}
+
+.previewCodes summary {
+  width: fit-content;
+  color: var(--color-mint);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+}
+
+.previewCodes p { margin: 9px 0 0; }
+.previewCodes ul { display: grid; gap: 5px; margin: 8px 0; padding-left: 18px; }
+.previewCodes code { color: var(--color-lime); font-family: var(--font-mono); }
+.loadingFeedback { margin: 12px 0 0; color: var(--color-mint); font-family: var(--font-mono); font-size: 0.63rem; }
 
 .previewNote {
   display: flex;

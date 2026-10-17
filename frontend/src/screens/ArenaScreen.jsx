@@ -2,47 +2,11 @@ import { useEffect, useState } from 'react';
 import ChatPanel from '../components/ChatPanel.jsx';
 import PlayerCard from '../components/PlayerCard.jsx';
 import StatusMessage from '../components/StatusMessage.jsx';
+import { CHALLENGES, INITIAL_ARENA_CHAT, PREVIEW_MATCH } from '../data/mockMatch.js';
 import styles from '../styles/ArenaScreen.module.css';
 
-const ROUND_SECONDS = 60;
+const ROUND_SECONDS = PREVIEW_MATCH.roundSeconds;
 
-const CHALLENGES = {
-  'data-structures': {
-    title: 'Repair the task queue',
-    summary: 'Fix the queue so items are added and removed in first-in, first-out order.',
-    starterCode: `class TaskQueue:\n    def __init__(self):\n        self.items = []\n\n    def enqueue(self, item):\n        # TODO: add item to the back of the queue\n        pass\n\n    def dequeue(self):\n        # TODO: return and remove the oldest item\n        pass`,
-    testNames: ['New items are added', 'Oldest item leaves first', 'Empty queue is handled'],
-  },
-  'object-oriented': {
-    title: 'Repair the counter',
-    summary: 'Correct the counter methods while preserving the object’s change history.',
-    starterCode: `class Counter:\n    def __init__(self):\n        self.count = 0\n        self.history = []\n\n    def increment(self):\n        self.count += 1\n        self.history.append("inc")\n\n    def decrement(self):\n        # TODO: subtract one and record the change\n        self.count -= 2\n        self.history.append("dec")\n\n    def reset(self):\n        # TODO: reset the count to zero\n        pass`,
-    testNames: ['Increment changes count', 'Decrement changes count by one', 'Reset returns to zero'],
-  },
-  security: {
-    title: 'Repair the input validator',
-    summary: 'Reject unsafe input consistently before it reaches the application.',
-    starterCode: `def is_valid_username(value):\n    # TODO: reject empty values and values longer than 24 chars\n    if value is None:\n        return True\n\n    # TODO: allow only letters, digits, and underscores\n    return True`,
-    testNames: ['Empty input is rejected', 'Length limit is enforced', 'Unsafe characters are rejected'],
-  },
-  frontend: {
-    title: 'Repair the form state',
-    summary: 'Keep the submit state accurate when a user edits and submits a form.',
-    starterCode: `def submit_form(values):\n    # TODO: reject a form with a blank email\n    email = values.get("email", "")\n\n    if email:\n        return {"submitted": True, "email": email}\n\n    # TODO: report invalid form state\n    return {"submitted": True, "email": email}`, 
-    testNames: ['Valid email can submit', 'Blank email is rejected', 'Submitted email is preserved'],
-  },
-  backend: {
-    title: 'Repair the response builder',
-    summary: 'Return a predictable API response and handle missing records safely.',
-    starterCode: `def build_user_response(user):\n    # TODO: return None when the user does not exist\n    if user is None:\n        return {}\n\n    return {\n        "id": user.get("id"),\n        # TODO: include the display name from the record\n        "name": user.get("username"),\n    }`,
-    testNames: ['Missing user is handled', 'Response contains an ID', 'Display name uses the right field'],
-  },
-};
-
-const INITIAL_CHAT = [
-  { id: 'chat-1', name: 'Maya', tone: 'violet', text: 'I’ll inspect the failing method first.' },
-  { id: 'chat-2', name: 'Jules', tone: 'mint', text: 'I see a TODO near the reset logic.' },
-];
 
 function formatTime(seconds) {
   const minutes = Math.floor(seconds / 60);
@@ -71,7 +35,7 @@ export default function ArenaScreen({
   const [code, setCode] = useState(challenge.starterCode);
   const [hasRunPreview, setHasRunPreview] = useState(false);
   const [isResultStale, setIsResultStale] = useState(false);
-  const [chatMessages, setChatMessages] = useState(INITIAL_CHAT);
+  const [chatMessages, setChatMessages] = useState(INITIAL_ARENA_CHAT);
 
   useEffect(() => {
     if (isPaused || secondsLeft === 0) return undefined;

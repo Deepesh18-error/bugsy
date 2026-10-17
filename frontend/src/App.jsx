@@ -1,4 +1,18 @@
 import { useState } from 'react';
+import {
+  buildPreviewPeerVotes,
+  buildPreviewRoom,
+  CATEGORIES,
+  countCategoryVotes,
+  createRoomCode,
+  findPreviewImpostorId,
+  PREVIEW_MATCH,
+  PREVIEW_JOIN_CODES,
+  PREVIEW_PEER_VOTES,
+  resolvePreviewCategoryVote,
+  resolvePreviewPlayerVote,
+  SKIP_VOTE,
+} from './data/mockMatch.js';
 import CategoryVoteScreen from './screens/CategoryVoteScreen.jsx';
 import ArenaScreen from './screens/ArenaScreen.jsx';
 import LobbyScreen from './screens/LobbyScreen.jsx';
@@ -7,155 +21,6 @@ import ResultsScreen from './screens/ResultsScreen.jsx';
 import RoleRevealScreen from './screens/RoleRevealScreen.jsx';
 import VoteScreen from './screens/VoteScreen.jsx';
 import WelcomeScreen from './screens/WelcomeScreen.jsx';
-
-const ROOM_CODE_CHARACTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-const SKIP_VOTE = 'skip';
-const CATEGORIES = [
-  { id: 'data-structures', name: 'Data Structures & Algorithms', description: 'Patterns, collections, and efficient solutions.' },
-  { id: 'object-oriented', name: 'Object-Oriented Programming', description: 'Classes, objects, and clean behavior.' },
-  { id: 'security', name: 'Security', description: 'Trust boundaries, validation, and safe code.' },
-  { id: 'frontend', name: 'Front-End', description: 'Interfaces, browser behavior, and user experience.' },
-  { id: 'backend', name: 'Back-End', description: 'APIs, services, and data flow.' },
-];
-const PREVIEW_PEER_VOTES = {
-  'preview-maya': 'object-oriented',
-  'preview-jules': 'data-structures',
-  'preview-ari': 'object-oriented',
-};
-
-function countCategoryVotes(votes) {
-  return Object.values(votes).reduce((counts, categoryId) => {
-    counts[categoryId] = (counts[categoryId] ?? 0) + 1;
-    return counts;
-  }, {});
-}
-
-function resolvePreviewVote(votes, roomCode) {
-  const voteCounts = countCategoryVotes(votes);
-  const highestCount = Math.max(...Object.values(voteCounts));
-  const tiedCategoryIds = CATEGORIES
-    .filter((category) => (voteCounts[category.id] ?? 0) === highestCount)
-    .map((category) => category.id);
-
-  // A stable room-code hash makes a preview tie repeatable for this room.
-  const roomSeed = [...roomCode].reduce((sum, character) => sum + character.charCodeAt(0), 0);
-  const winningCategoryId = tiedCategoryIds[roomSeed % tiedCategoryIds.length];
-
-  return {
-    categoryId: winningCategoryId,
-    voteCounts,
-    wasTie: tiedCategoryIds.length > 1,
-  };
-}
-
-function findPreviewImpostorId(room, matchSeed = 0) {
-  const roomSeed = [...room.code].reduce(
-    (sum, character) => sum + character.charCodeAt(0),
-    0,
-  );
-  const impostorIndex = (roomSeed + matchSeed) % room.players.length;
-  return room.players[impostorIndex].id;
-}
-
-function buildPreviewPeerVotes(room) {
-  const roomSeed = [...room.code].reduce(
-    (sum, character) => sum + character.charCodeAt(0),
-    0,
-  );
-  const livingPlayers = room.players.filter((player) => player.isAlive !== false);
-  const simulatedVoters = livingPlayers.filter(
-    (player) => player.id !== room.currentPlayerId,
-  );
-
-  return simulatedVoters.reduce((votes, voter, index) => {
-    if (roomSeed % 5 === 0) {
-      votes[voter.id] = SKIP_VOTE;
-      return votes;
-    }
-
-    const possibleTargets = livingPlayers.filter((player) => player.id !== voter.id);
-    const targetIndex = (roomSeed + index) % possibleTargets.length;
-    votes[voter.id] = possibleTargets[targetIndex]?.id ?? SKIP_VOTE;
-    return votes;
-  }, {});
-}
-
-function resolvePreviewPlayerVote(votes) {
-  const voteCounts = Object.values(votes).reduce((counts, choice) => {
-    counts[choice] = (counts[choice] ?? 0) + 1;
-    return counts;
-  }, {});
-  const playerVoteCounts = Object.entries(voteCounts)
-    .filter(([choice]) => choice !== SKIP_VOTE);
-
-  if (playerVoteCounts.length === 0) {
-    return { reason: 'all-skipped', voteCounts };
-  }
-
-  const allVoteCounts = Object.entries(voteCounts);
-  const highestCount = Math.max(...allVoteCounts.map(([, count]) => count));
-  const leaders = allVoteCounts
-    .filter(([, count]) => count === highestCount)
-    .map(([choice]) => choice);
-
-  if (leaders.length > 1) {
-    return { reason: 'tie', voteCounts };
-  }
-
-  if (leaders[0] === SKIP_VOTE) {
-    return { reason: 'skip-wins', voteCounts };
-  }
-
-  return {
-    reason: 'ejected',
-    ejectedPlayerId: leaders[0],
-    voteCounts,
-  };
-}
-
-function createRoomCode() {
-  return Array.from({ length: 6 }, () => {
-    const index = Math.floor(Math.random() * ROOM_CODE_CHARACTERS.length);
-    return ROOM_CODE_CHARACTERS[index];
-  }).join('');
-}
-
-function makePreviewPlayers(displayName, isCreating) {
-  const localPlayer = {
-    id: 'local-player',
-    name: displayName,
-    isYou: true,
-    isDemo: false,
-    ready: false,
-    isAlive: true,
-    tone: 'coral',
-  };
-
-  const previewPlayers = [
-    { id: 'preview-maya', name: 'Maya', tone: 'violet' },
-    { id: 'preview-jules', name: 'Jules', tone: 'mint' },
-    { id: 'preview-ari', name: 'Ari', tone: 'gold' },
-  ].map((player, index) => ({
-    ...player,
-    isYou: false,
-    isDemo: true,
-    isHost: !isCreating && index === 0,
-    ready: true,
-  }));
-
-  return isCreating
-    ? [{ ...localPlayer, isHost: true }, ...previewPlayers]
-    : [...previewPlayers, { ...localPlayer, isHost: false }];
-}
-
-function buildPreviewRoom(displayName, roomCode, isCreating) {
-  return {
-    code: roomCode,
-    capacity: 5,
-    currentPlayerId: 'local-player',
-    players: makePreviewPlayers(displayName, isCreating),
-  };
-}
 
 export default function App() {
   const [screen, setScreen] = useState('welcome');
@@ -184,11 +49,31 @@ export default function App() {
   }
 
   function handleJoinRoom(displayName, roomCode) {
-    // Room lookup is intentionally mocked in this front-end prototype.
+    // These reserved codes make the Phase 2 room states reachable without a server.
+    if (roomCode === PREVIEW_JOIN_CODES.full) {
+      return { error: 'This preview room is full. Try another room code.' };
+    }
+    if (roomCode === PREVIEW_JOIN_CODES.expired) {
+      return { error: 'This preview room code has expired. Ask the host for a current code.' };
+    }
+    if (roomCode === PREVIEW_JOIN_CODES.serverError) {
+      return { error: 'The preview server could not check this room. Please try again.' };
+    }
+    if (roomCode !== PREVIEW_JOIN_CODES.available) {
+      return { error: 'No active preview room uses this code. Check the code or ask the host.' };
+    }
+
     enterLobby(displayName, roomCode, false);
+    return { success: true };
   }
 
   function handleToggleReady() {
+    const localPlayer = room.players.find((player) => player.id === room.currentPlayerId);
+    const localWillBeReady = !localPlayer?.ready;
+    const otherPlayersAreReady = room.players
+      .filter((player) => player.id !== room.currentPlayerId)
+      .every((player) => player.ready);
+
     setRoom((currentRoom) => ({
       ...currentRoom,
       players: currentRoom.players.map((player) =>
@@ -197,6 +82,13 @@ export default function App() {
           : player,
       ),
     }));
+
+    if (!localPlayer?.isHost && localWillBeReady && otherPlayersAreReady) {
+      setLobbyMessage('Everyone is ready. The sample host is starting the preview…');
+      window.setTimeout(handleStartMatch, 350);
+      return;
+    }
+
     setLobbyMessage('Your ready status was updated in this local preview.');
   }
 
@@ -225,7 +117,7 @@ export default function App() {
     };
     setCategoryVotes(nextVotes);
     setMyCategoryVote(categoryId);
-    setCategoryResult(resolvePreviewVote(nextVotes, room.code));
+    setCategoryResult(resolvePreviewCategoryVote(nextVotes, room.code));
   }
 
   function handleRevealRole() {
@@ -344,7 +236,7 @@ export default function App() {
   function handleRoundTimeout() {
     if (screen !== 'arena') return;
 
-    const isFinalRound = roundNumber >= 4;
+    const isFinalRound = roundNumber >= PREVIEW_MATCH.totalRounds;
     setGameResult({
       type: isFinalRound ? 'match' : 'round',
       action: isFinalRound ? 'finish' : 'next-round',
@@ -460,7 +352,7 @@ export default function App() {
             categoryName={selectedCategory?.name ?? 'Selected category'}
             key={roundNumber}
             roundNumber={roundNumber}
-            totalRounds={4}
+            totalRounds={PREVIEW_MATCH.totalRounds}
             isPaused={screen !== 'arena'}
             meetingAvailable={!hasUsedMeeting}
             onCallMeeting={handleCallMeeting}
@@ -491,7 +383,7 @@ export default function App() {
           <ResultsScreen
             roomCode={room.code}
             roundNumber={roundNumber}
-            totalRounds={4}
+            totalRounds={PREVIEW_MATCH.totalRounds}
             result={gameResult}
             onContinue={handleContinueFromResults}
             onRematch={handleRematch}

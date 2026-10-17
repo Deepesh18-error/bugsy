@@ -1,14 +1,15 @@
 import { useRef, useState } from 'react';
+import { PREVIEW_JOIN_CODES, ROOM_CODE_CHARACTERS, ROOM_CODE_LENGTH } from '../data/mockMatch.js';
 import styles from '../styles/WelcomeScreen.module.css';
 
 const MAX_NAME_LENGTH = 18;
-const ROOM_CODE_LENGTH = 6;
 
 export default function WelcomeScreen({ onCreateRoom, onJoinRoom }) {
   const [displayName, setDisplayName] = useState('');
   const [roomCode, setRoomCode] = useState('');
   const [nameError, setNameError] = useState('');
   const [joinError, setJoinError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(null);
   const joinButtonRef = useRef(null);
 
   function getValidDisplayName() {
@@ -25,6 +26,7 @@ export default function WelcomeScreen({ onCreateRoom, onJoinRoom }) {
 
   function handleSubmit(event) {
     event.preventDefault();
+    if (isSubmitting) return;
 
     const action = event.nativeEvent.submitter?.value;
     const cleanedName = getValidDisplayName();
@@ -36,13 +38,28 @@ export default function WelcomeScreen({ onCreateRoom, onJoinRoom }) {
         setJoinError(`Room codes are ${ROOM_CODE_LENGTH} characters long.`);
         return;
       }
-
-      onJoinRoom(cleanedName, roomCode);
-      return;
+      if ([...roomCode].some((character) => !ROOM_CODE_CHARACTERS.includes(character))) {
+        setJoinError('Use letters A–Z except I and O, and digits 2–9.');
+        return;
+      }
     }
 
     setJoinError('');
-    onCreateRoom(cleanedName);
+    setIsSubmitting(action === 'join' ? 'join' : 'create');
+
+    // A short local delay makes the pending state visible before the mock result.
+    window.setTimeout(() => {
+      if (action === 'join') {
+        const result = onJoinRoom(cleanedName, roomCode);
+        if (result?.error) {
+          setJoinError(result.error);
+          setIsSubmitting(null);
+        }
+        return;
+      }
+
+      onCreateRoom(cleanedName);
+    }, 350);
   }
 
   function handleRoomCodeChange(event) {
@@ -96,11 +113,12 @@ export default function WelcomeScreen({ onCreateRoom, onJoinRoom }) {
               <span className={styles.cardGlyph} aria-hidden="true">{'{ }'}</span>
             </div>
 
-            <form className={styles.entryForm} onSubmit={handleSubmit}>
+            <form aria-busy={Boolean(isSubmitting)} className={styles.entryForm} onSubmit={handleSubmit}>
             <label className={styles.fieldLabel} htmlFor="display-name">Your player name</label>
             <input
               autoComplete="nickname"
               className={styles.textInput}
+              disabled={Boolean(isSubmitting)}
               id="display-name"
               maxLength={MAX_NAME_LENGTH}
               onChange={(event) => {
@@ -122,8 +140,8 @@ export default function WelcomeScreen({ onCreateRoom, onJoinRoom }) {
             </div>
 
               <div className={styles.createForm}>
-              <button className={styles.createButton} name="action" value="create" type="submit">
-                <span>Create a room</span><span aria-hidden="true">↗</span>
+              <button className={styles.createButton} disabled={Boolean(isSubmitting)} name="action" value="create" type="submit">
+                <span>{isSubmitting === 'create' ? 'Creating room…' : 'Create a room'}</span><span aria-hidden="true">↗</span>
               </button>
               </div>
 
@@ -138,6 +156,7 @@ export default function WelcomeScreen({ onCreateRoom, onJoinRoom }) {
                   autoCapitalize="characters"
                   autoComplete="off"
                   className={`${styles.textInput} ${styles.codeInput}`}
+                  disabled={Boolean(isSubmitting)}
                   id="room-code"
                   maxLength={ROOM_CODE_LENGTH}
                   onChange={handleRoomCodeChange}
@@ -153,14 +172,33 @@ export default function WelcomeScreen({ onCreateRoom, onJoinRoom }) {
                   aria-describedby={joinError ? 'join-error' : 'code-hint'}
                   aria-invalid={Boolean(joinError)}
                 />
-                <button className={styles.joinButton} name="action" ref={joinButtonRef} value="join" type="submit">Join</button>
+                <button className={styles.joinButton} disabled={Boolean(isSubmitting)} name="action" ref={joinButtonRef} value="join" type="submit">
+                  {isSubmitting === 'join' ? 'Checking…' : 'Join'}
+                </button>
               </div>
               {joinError ? (
                 <p className={styles.errorText} id="join-error" role="alert">{joinError}</p>
               ) : (
                 <p className={styles.fieldHint} id="code-hint">Ask the room host for their six-character code.</p>
               )}
+              <details className={styles.previewCodes}>
+                <summary>Preview room outcomes</summary>
+                <p>Use these six-character codes to preview local join responses:</p>
+                <ul>
+                  <li><code>{PREVIEW_JOIN_CODES.available}</code> joins the sample room.</li>
+                  <li><code>{PREVIEW_JOIN_CODES.full}</code> shows the room-full state.</li>
+                  <li><code>{PREVIEW_JOIN_CODES.expired}</code> shows the expired-code state.</li>
+                  <li><code>{PREVIEW_JOIN_CODES.serverError}</code> shows a simulated server error.</li>
+                </ul>
+                <p>Any other valid-format code shows the room-not-found state.</p>
+              </details>
             </div>
+
+            {isSubmitting && (
+              <p className={styles.loadingFeedback} role="status">
+                {isSubmitting === 'join' ? 'Checking the room code…' : 'Creating your preview room…'}
+              </p>
+            )}
 
             <p className={styles.previewNote}>
               <span aria-hidden="true">✳</span>

@@ -1,0 +1,126 @@
+{
+  "schema_version": 1,
+  "id": "oop.counter",
+  "version": "1.0.0",
+  "category": "object-oriented",
+  "title": "Repair the Counter",
+  "prompt": "Repair the Counter methods so they update the count correctly and preserve a history of each operation.",
+  "language": "python",
+  "python_version": "3.13",
+  "starter_code": "class Counter:\n    def __init__(self):\n        self.count = 0\n        self.history = []\n\n    def increment(self):\n        self.count += 1\n        self.history.append(\"inc\")\n\n    def decrement(self):\n        # TODO: subtract one and record the change\n        self.count -= 2\n        self.history.append(\"dec\")\n\n    def reset(self):\n        # TODO: reset the count to zero and record the change\n        pass\n\n    def value(self):\n        return self.count\n",
+  "functions": [
+    {
+      "id": "init",
+      "name": "__init__",
+      "purpose": "Initialize the count and operation history."
+    },
+    {
+      "id": "increment",
+      "name": "increment",
+      "purpose": "Add one to the count and record the increment."
+    },
+    {
+      "id": "decrement",
+      "name": "decrement",
+      "purpose": "Subtract one from the count and record the decrement."
+    },
+    {
+      "id": "reset",
+      "name": "reset",
+      "purpose": "Set the count to zero and record the reset without erasing earlier history."
+    },
+    {
+      "id": "value",
+      "name": "value",
+      "purpose": "Return the current count."
+    }
+  ],
+  "todos": [
+    {
+      "id": "fix-decrement",
+      "instructions": "Make decrement subtract exactly one and keep recording the operation.",
+      "target_function_ids": ["decrement"]
+    },
+    {
+      "id": "implement-reset",
+      "instructions": "Make reset set the count to zero and append the reset operation to history.",
+      "target_function_ids": ["reset"]
+    }
+  ],
+  "tests": [
+    {
+      "id": "increment-changes-count",
+      "test_definition_id": "counter_increment_changes_count",
+      "name": "Increment changes count",
+      "visibility": "public",
+      "required_for_civilian_win": true,
+      "expected_behavior": "Calling increment increases count by one and appends 'inc' to history.",
+      "target_function_ids": ["init", "increment"],
+      "public_description": "Checks that increment adds one and records the operation.",
+      "safe_failure_message": "Increment did not update count and history as expected."
+    },
+    {
+      "id": "decrement-subtracts-one",
+      "test_definition_id": "counter_decrement_subtracts_one",
+      "name": "Decrement subtracts one",
+      "visibility": "public",
+      "required_for_civilian_win": true,
+      "expected_behavior": "Calling decrement decreases count by exactly one and appends 'dec' to history.",
+      "target_function_ids": ["init", "decrement"],
+      "public_description": "Checks that decrement subtracts one and records the operation.",
+      "safe_failure_message": "Decrement did not subtract one and record the operation."
+    },
+    {
+      "id": "reset-sets-count-to-zero",
+      "test_definition_id": "counter_reset_sets_count_to_zero",
+      "name": "Reset returns count to zero",
+      "visibility": "public",
+      "required_for_civilian_win": true,
+      "expected_behavior": "Calling reset sets count to zero and appends 'reset' without deleting earlier history.",
+      "target_function_ids": ["init", "reset"],
+      "public_description": "Checks that reset clears the count while preserving and extending history.",
+      "safe_failure_message": "Reset did not set count to zero and preserve the operation history."
+    },
+    {
+      "id": "value-returns-count",
+      "test_definition_id": "counter_value_returns_count",
+      "name": "Value returns current count",
+      "visibility": "public",
+      "required_for_civilian_win": true,
+      "expected_behavior": "The value method returns the current count, not the number of history entries.",
+      "target_function_ids": ["value"],
+      "public_description": "Checks that value reports the count stored by the object.",
+      "safe_failure_message": "Value did not return the current count."
+    },
+    {
+      "id": "history-preserves-operation-order",
+      "test_definition_id": "counter_history_preserves_operation_order",
+      "visibility": "hidden",
+      "required_for_civilian_win": true,
+      "expected_behavior": "A sequence of increment, decrement, and reset operations leaves the complete operation history in order while reset sets count to zero.",
+      "target_function_ids": ["increment", "decrement", "reset"]
+    }
+  ],
+  "runtime_policy": "python-standard-v1",
+  "reference_solution": "class Counter:\n    def __init__(self):\n        self.count = 0\n        self.history = []\n\n    def increment(self):\n        self.count += 1\n        self.history.append(\"inc\")\n\n    def decrement(self):\n        self.count -= 1\n        self.history.append(\"dec\")\n\n    def reset(self):\n        self.count = 0\n        self.history.append(\"reset\")\n\n    def value(self):\n        return self.count\n",
+  "sabotage_objectives": [
+    {
+      "id": "regress-decrement",
+      "private_description": "After the decrement test has passed, subtly change decrement so it subtracts two instead of one. Keep the edit plausible.",
+      "target_function_ids": ["decrement"],
+      "target_test_ids": ["decrement-subtracts-one"],
+      "verification": {
+        "kind": "test_regression",
+        "test_id": "decrement-subtracts-one"
+      },
+      "progress_policy": "verified_once",
+      "completion_effect": "record_completion",
+      "fairness_notes": "The objective cannot complete on the intentionally broken starter revision: the official decrement test must first pass, then fail on a later revision. Civilians can inspect the shared edit history and rerun the public test to discover and repair the regression."
+    }
+  ],
+  "authorship": {
+    "authored_by": "CodeMafia project team",
+    "created_at": "2026-10-17",
+    "review_status": "draft"
+  }
+}

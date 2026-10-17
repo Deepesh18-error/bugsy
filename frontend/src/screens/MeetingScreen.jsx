@@ -1,13 +1,10 @@
 import { useEffect, useState } from 'react';
 import ChatPanel from '../components/ChatPanel.jsx';
 import PlayerCard from '../components/PlayerCard.jsx';
+import { INITIAL_DISCUSSION, PREVIEW_MATCH } from '../data/mockMatch.js';
 import styles from '../styles/MeetingScreen.module.css';
 
-const DISCUSSION_SECONDS = 30;
-const INITIAL_DISCUSSION = [
-  { id: 'discussion-1', name: 'Maya', tone: 'violet', text: 'What changed right before the test failed?' },
-  { id: 'discussion-2', name: 'Jules', tone: 'mint', text: 'Let’s compare the edit history before we assume intent.' },
-];
+const DISCUSSION_SECONDS = PREVIEW_MATCH.discussionSeconds;
 
 function formatTime(seconds) {
   const minutes = Math.floor(seconds / 60);

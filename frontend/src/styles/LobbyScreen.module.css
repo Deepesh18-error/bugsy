@@ -270,6 +270,23 @@
   list-style: none;
 }
 
+.connectionPreview {
+  margin-top: 13px;
+  padding: 11px 12px;
+  border: 1px dashed #43524f;
+  border-radius: 9px;
+  background: rgb(16 23 29 / 35%);
+}
+
+.connectionPreview summary {
+  color: #aab7b1;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+}
+
+.connectionPreview .playerList { margin-top: 9px; }
+
 .playerRow {
   min-height: 72px;
   align-items: center;

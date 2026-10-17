@@ -3,6 +3,7 @@ import Button from '../components/Button.jsx';
 import Panel from '../components/Panel.jsx';
 import PlayerCard from '../components/PlayerCard.jsx';
 import StatusMessage from '../components/StatusMessage.jsx';
+import { PREVIEW_MATCH } from '../data/mockMatch.js';
 import styles from '../styles/LobbyScreen.module.css';
 
 export default function LobbyScreen({ room, message, onBack, onStart, onToggleReady }) {
@@ -10,13 +11,14 @@ export default function LobbyScreen({ room, message, onBack, onStart, onToggleRe
   const currentPlayer = room.players.find((player) => player.id === room.currentPlayerId);
   const isHost = currentPlayer?.isHost ?? false;
   const readyCount = room.players.filter((player) => player.ready).length;
-  const enoughPlayers = room.players.length >= 4 && room.players.length <= room.capacity;
+  const enoughPlayers = room.players.length >= PREVIEW_MATCH.minimumPlayers
+    && room.players.length <= room.capacity;
   const everyoneReady = readyCount === room.players.length;
   const canStart = isHost && enoughPlayers && everyoneReady;
 
   let startHint = 'All players are ready. The host can start the match.';
   if (!isHost) startHint = 'Waiting for the host to start the match.';
-  else if (!enoughPlayers) startHint = 'A match needs 4–5 players.';
+  else if (!enoughPlayers) startHint = `A match needs ${PREVIEW_MATCH.minimumPlayers}–${room.capacity} players.`;
   else if (!everyoneReady) startHint = 'Everyone needs to be ready before the host starts.';
 
   async function handleCopyCode() {
@@ -88,6 +90,19 @@ export default function LobbyScreen({ room, message, onBack, onStart, onToggleRe
                 </li>
               )}
             </ul>
+
+            <details className={styles.connectionPreview}>
+              <summary>Preview reconnecting and disconnected states</summary>
+              <ul aria-label="Connection state example" className={styles.playerList}>
+                <PlayerCard
+                  player={{ id: 'connection-example', name: 'Sample teammate', tone: 'gold', isConnected: false, isAlive: true }}
+                  variant="compact"
+                />
+              </ul>
+              <StatusMessage status="reconnecting">
+                Reconnecting to the room… This is a simulated connection state.
+              </StatusMessage>
+            </details>
 
             <div className={styles.readySummary}>
               <span className={styles.readyMeter} aria-hidden="true">
