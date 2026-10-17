@@ -1,0 +1,30 @@
+.message {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  gap: 7px;
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 0.72rem;
+  line-height: 1.5;
+}
+
+.icon { flex: 0 0 auto; font-family: var(--font-mono); font-weight: 800; }
+.info .icon { color: var(--color-mint); }
+.success { color: var(--color-mint); }
+.success .icon { color: var(--color-mint); }
+.error { color: #ff9b89; }
+.error .icon { color: var(--color-coral); }
+.warning { color: #efc566; }
+.warning .icon { color: #efc566; }
+.loading .icon,
+.reconnecting .icon { color: var(--color-lime); }
+.loading .icon,
+.reconnecting .icon { animation: turn 1200ms linear infinite; }
+
+@keyframes turn { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .loading .icon,
+  .reconnecting .icon { animation: none; }
+}

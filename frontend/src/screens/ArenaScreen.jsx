@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
+import ChatPanel from '../components/ChatPanel.jsx';
+import PlayerCard from '../components/PlayerCard.jsx';
+import StatusMessage from '../components/StatusMessage.jsx';
 import styles from '../styles/ArenaScreen.module.css';
 
 const ROUND_SECONDS = 60;
-const MAX_CHAT_LENGTH = 180;
 
 const CHALLENGES = {
   'data-structures': {
@@ -58,6 +60,7 @@ export default function ArenaScreen({
   isPaused = false,
   meetingAvailable = true,
   onCallMeeting,
+  onRoundTimeout,
 }) {
   const challenge = CHALLENGES[categoryId] ?? CHALLENGES['object-oriented'];
   const previewResults = challenge.testNames.map((name, index) => ({
@@ -69,8 +72,6 @@ export default function ArenaScreen({
   const [hasRunPreview, setHasRunPreview] = useState(false);
   const [isResultStale, setIsResultStale] = useState(false);
   const [chatMessages, setChatMessages] = useState(INITIAL_CHAT);
-  const [chatDraft, setChatDraft] = useState('');
-  const [chatNotice, setChatNotice] = useState('');
 
   useEffect(() => {
     if (isPaused || secondsLeft === 0) return undefined;
@@ -81,6 +82,10 @@ export default function ArenaScreen({
 
     return () => window.clearInterval(intervalId);
   }, [secondsLeft, isPaused]);
+
+  useEffect(() => {
+    if (secondsLeft === 0 && !isPaused) onRoundTimeout?.();
+  }, [secondsLeft, isPaused, onRoundTimeout]);
 
   function handleCodeChange(event) {
     setCode(event.target.value);
@@ -93,14 +98,7 @@ export default function ArenaScreen({
     setIsResultStale(false);
   }
 
-  function handleSendChat(event) {
-    event.preventDefault();
-    const text = chatDraft.trim();
-    if (!text) {
-      setChatNotice('Enter a message before sending.');
-      return;
-    }
-
+  function handleSendChat(text) {
     const currentPlayer = room.players.find((player) => player.id === room.currentPlayerId);
     setChatMessages((messages) => [
       ...messages,
@@ -112,8 +110,6 @@ export default function ArenaScreen({
         isYou: true,
       },
     ]);
-    setChatDraft('');
-    setChatNotice('Message added to this local preview.');
   }
 
   const passedCount = previewResults.filter((result) => result.passed).length;
@@ -173,9 +169,9 @@ export default function ArenaScreen({
             ) : (
               <>
                 {isResultStale && (
-                  <p className={styles.staleNotice} role="status">
+                  <StatusMessage as="p" className={styles.staleNotice} status="warning">
                     Code changed after this preview. These sample results are stale.
-                  </p>
+                  </StatusMessage>
                 )}
                 <ul className={styles.testList}>
                   {previewResults.map((result) => (
@@ -252,61 +248,25 @@ export default function ArenaScreen({
             </div>
             <ul className={styles.playerList}>
               {room.players.map((player) => (
-                <li className={styles.playerRow} key={player.id}>
-                  <span className={`${styles.playerAvatar} ${styles[player.tone] ?? ''}`} aria-hidden="true">
-                    {player.name.slice(0, 1).toUpperCase()}
-                  </span>
-                  <span className={styles.playerName}>{player.name}{player.isYou ? ' (you)' : ''}</span>
-                  <span className={player.isYou ? styles.youStatus : styles.onlineStatus}>
-                    {player.isYou ? 'YOU' : 'HERE'}
-                  </span>
-                </li>
+                <PlayerCard className={styles.playerRow} key={player.id} player={player} variant="compact" />
               ))}
             </ul>
           </section>
 
-          <section className={styles.chatPanel} aria-labelledby="chat-title">
-            <div className={styles.chatHeader}>
-              <div>
-                <p className={styles.eyebrow}>TEAM CHANNEL</p>
-                <h2 id="chat-title">Chat</h2>
-              </div>
-              <span className={styles.localTag}>LOCAL</span>
-            </div>
-            <ol className={styles.messages} aria-live="polite" aria-relevant="additions">
-              {chatMessages.map((message) => (
-                <li className={styles.message} key={message.id}>
-                  <strong className={`${styles.messageName} ${styles[message.tone] ?? ''}`}>
-                    {message.name}{message.isYou ? ' · you' : ''}
-                  </strong>
-                  <p>{message.text}</p>
-                </li>
-              ))}
-            </ol>
-            <form className={styles.chatForm} onSubmit={handleSendChat}>
-              <label className={styles.srOnly} htmlFor="chat-input">Write a chat message</label>
-              <input
-                id="chat-input"
-                type="text"
-                maxLength={MAX_CHAT_LENGTH}
-                value={chatDraft}
-                onChange={(event) => {
-                  setChatDraft(event.target.value);
-                  setChatNotice('');
-                }}
-                placeholder="Message your team..."
-                autoComplete="off"
-              />
-              <button type="submit" aria-label="Send message">Send</button>
-            </form>
-            <p className={styles.chatNotice} role="status">{chatNotice || 'Messages stay in this browser preview.'}</p>
-          </section>
+          <ChatPanel
+            className={styles.chatPanel}
+            emptyMessage="No messages yet. Start the team conversation."
+            localLabel="Messages stay in this browser preview."
+            messages={chatMessages}
+            onSendMessage={handleSendChat}
+            placeholder="Message your team..."
+          />
         </aside>
       </div>
 
       {secondsLeft === 0 && (
         <div className={styles.timeUpBanner} role="status">
-          Preview timer ended. A real match would wait for the server to resolve the round.
+          Preview timer ended. Opening the round result...
         </div>
       )}
     </main>

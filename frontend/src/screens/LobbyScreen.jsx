@@ -1,14 +1,9 @@
 import { useState } from 'react';
+import Button from '../components/Button.jsx';
+import Panel from '../components/Panel.jsx';
+import PlayerCard from '../components/PlayerCard.jsx';
+import StatusMessage from '../components/StatusMessage.jsx';
 import styles from '../styles/LobbyScreen.module.css';
-
-function getInitials(name) {
-  return name
-    .trim()
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() ?? '')
-    .join('');
-}
 
 export default function LobbyScreen({ room, message, onBack, onStart, onToggleReady }) {
   const [copyMessage, setCopyMessage] = useState('');
@@ -40,9 +35,9 @@ export default function LobbyScreen({ room, message, onBack, onStart, onToggleRe
           <a className={styles.brand} href="#lobby" aria-label="CodeMafia home">
             <span className={styles.brandMark} aria-hidden="true">CM</span><span>codemafia</span>
           </a>
-          <button className={styles.backButton} onClick={onBack} type="button">
+          <Button className={styles.backButton} onClick={onBack} variant="unstyled">
             <span aria-hidden="true">←</span> Back to start
-          </button>
+          </Button>
         </header>
 
         <section className={styles.content} id="lobby">
@@ -62,13 +57,13 @@ export default function LobbyScreen({ room, message, onBack, onStart, onToggleRe
                 <span className={styles.roomCodeLabel}>ROOM CODE</span>
                 <p className={styles.roomCode} aria-label={`Room code ${room.code}`}>{room.code}</p>
               </div>
-              <button aria-label="Copy room code" className={styles.copyButton} onClick={handleCopyCode} type="button">
+              <Button aria-label="Copy room code" className={styles.copyButton} onClick={handleCopyCode} variant="unstyled">
                 <span aria-hidden="true">▢</span><span>Copy</span>
-              </button>
+              </Button>
             </div>
-            <p aria-live="polite" className={styles.copyMessage}>
+            <StatusMessage as="p" className={styles.copyMessage} icon="" status={copyMessage.includes('unavailable') ? 'warning' : copyMessage ? 'success' : 'info'}>
               {copyMessage || 'Friends can enter this code on the welcome screen.'}
-            </p>
+            </StatusMessage>
 
             <div className={styles.lobbyNote}>
               <span className={styles.noteIcon} aria-hidden="true">i</span>
@@ -76,7 +71,7 @@ export default function LobbyScreen({ room, message, onBack, onStart, onToggleRe
             </div>
           </div>
 
-          <section className={styles.lobbyCard} aria-labelledby="players-title">
+          <Panel variant="unstyled" className={styles.lobbyCard} aria-labelledby="players-title">
             <div className={styles.cardHeader}>
               <div><p className={styles.cardEyebrow}>THE LINEUP</p><h2 id="players-title">Players</h2></div>
               <span className={styles.playerCount}>{room.players.length}<span> / {room.capacity}</span></span>
@@ -84,27 +79,7 @@ export default function LobbyScreen({ room, message, onBack, onStart, onToggleRe
 
             <ul aria-label="Players in this room" className={styles.playerList}>
               {room.players.map((player) => (
-                <li className={styles.playerRow} key={player.id}>
-                  <span className={`${styles.avatar} ${styles[player.tone]}`} aria-hidden="true">
-                    {getInitials(player.name)}
-                  </span>
-                  <span className={styles.playerIdentity}>
-                    <span className={styles.playerName}>
-                      {player.name}{player.isYou && <span className={styles.youTag}>YOU</span>}
-                    </span>
-                    <span className={styles.playerMeta}>
-                      {player.isHost ? 'Room host' : 'Connected'}{player.isDemo && ' · sample player'}
-                    </span>
-                  </span>
-                  {player.isHost && <span className={styles.hostBadge} aria-label="Host">HOST</span>}
-                  <span
-                    className={`${styles.readyBadge} ${player.ready ? styles.ready : styles.notReady}`}
-                    aria-label={player.ready ? 'Ready' : 'Not ready'}
-                  >
-                    <span aria-hidden="true">{player.ready ? '✓' : '·'}</span>
-                    {player.ready ? 'Ready' : 'Not ready'}
-                  </span>
-                </li>
+                <PlayerCard className={styles.playerRow} key={player.id} player={player} variant="lobby" />
               ))}
               {room.players.length < room.capacity && (
                 <li className={styles.openSlot}>
@@ -122,20 +97,20 @@ export default function LobbyScreen({ room, message, onBack, onStart, onToggleRe
             </div>
 
             <div className={styles.actions}>
-              <button
+              <Button
                 className={`${styles.readyButton} ${currentPlayer?.ready ? styles.readyButtonActive : ''}`}
                 onClick={onToggleReady}
-                type="button"
                 aria-pressed={Boolean(currentPlayer?.ready)}
+                variant="unstyled"
               >
                 {currentPlayer?.ready ? '✓ You’re ready' : 'I’m ready'}
-              </button>
-              <button className={styles.startButton} disabled={!canStart} onClick={onStart} type="button">
+              </Button>
+              <Button className={styles.startButton} disabled={!canStart} onClick={onStart} variant="unstyled">
                 Start match <span aria-hidden="true">→</span>
-              </button>
+              </Button>
             </div>
-            <p aria-live="polite" className={styles.startHint}>{message || startHint}</p>
-          </section>
+            <StatusMessage as="p" className={styles.startHint} icon="" status={message ? 'success' : 'info'}>{message || startHint}</StatusMessage>
+          </Panel>
         </section>
 
         <footer className={styles.footer}>

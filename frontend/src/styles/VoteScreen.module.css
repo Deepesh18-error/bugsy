@@ -1,0 +1,62 @@
+.page { min-height: 100vh; background: radial-gradient(ellipse at 50% 0%, rgb(115 213 179 / 7%), transparent 38rem), var(--color-ink); color: var(--color-text); }
+.frame { display: flex; width: min(100% - 40px, 960px); min-height: 100vh; flex-direction: column; margin-inline: auto; }
+.topbar, .brand, .roomMeta, .content, .panelHeader, .candidate, .ballotFooter, .tallyRow { display: flex; }
+.topbar { min-height: 76px; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--color-line); }
+.brand { align-items: center; gap: 10px; color: var(--color-text); font-size: 0.96rem; font-weight: 800; letter-spacing: -0.04em; text-decoration: none; }
+.brandMark { display: grid; width: 32px; height: 32px; place-items: center; border: 1px solid rgb(255 120 94 / 70%); border-radius: 10px; color: var(--color-coral); font-family: var(--font-mono); font-size: 0.65rem; transform: rotate(-4deg); }
+.roomMeta { align-items: center; gap: 9px; color: #8e9c96; font-family: var(--font-mono); font-size: 0.59rem; letter-spacing: 0.1em; }
+.roomMeta strong { padding: 8px 10px; border: 1px solid #3d4b4c; border-radius: 7px; color: var(--color-lime); font-size: 0.72rem; font-weight: 600; }
+.content { flex: 1; flex-direction: column; align-items: center; gap: 26px; padding-block: 45px 54px; }
+.heading { width: min(100%, 660px); text-align: center; }
+.eyebrow, .panelEyebrow, .footer { font-family: var(--font-mono); letter-spacing: 0.1em; text-transform: uppercase; }
+.eyebrow { margin: 0 0 12px; color: var(--color-mint); font-size: 0.6rem; font-weight: 700; }
+.heading h1 { margin: 0; color: var(--color-text); font-size: clamp(2rem, 5vw, 3.1rem); letter-spacing: -0.055em; line-height: 1.08; }
+.heading h1 span { color: var(--color-mint); }
+.intro { max-width: 560px; margin: 14px auto 0; color: var(--color-muted); font-size: 0.86rem; line-height: 1.6; }
+.ballotPanel, .resultPanel { width: min(100%, 620px); padding: 22px; border: 1px solid var(--color-line); border-radius: 12px; background: var(--color-panel); }
+.panelHeader { align-items: flex-start; justify-content: space-between; gap: 12px; }
+.panelEyebrow { margin: 0 0 6px; color: #91a29d; font-size: 0.56rem; font-weight: 700; }
+.panelHeader h2, .resultPanel h2 { margin: 0; font-size: 1.05rem; letter-spacing: -0.025em; }
+.voterCount { padding: 6px 8px; border: 1px solid #3c4a48; border-radius: 6px; color: var(--color-lime); font-family: var(--font-mono); font-size: 0.56rem; }
+.candidateList { display: grid; gap: 8px; margin-top: 16px; }
+.candidate { min-height: 58px; align-items: center; gap: 12px; padding: 9px 12px; border: 1px solid #3a4845; border-radius: 8px; background: #1a252a; color: var(--color-text); cursor: pointer; text-align: left; }
+.candidate:hover { border-color: #718477; background: #202e31; }
+.candidate.selected { border-color: var(--color-mint); background: rgb(115 213 179 / 8%); box-shadow: inset 3px 0 var(--color-mint); }
+.candidateNumber { width: 24px; color: #82918b; font-family: var(--font-mono); font-size: 0.58rem; }
+.avatar { display: grid; width: 32px; height: 32px; flex: 0 0 auto; place-items: center; border-radius: 8px; background: #34434a; color: #eee; font-family: var(--font-mono); font-size: 0.7rem; font-weight: 700; }
+.violet { color: #c4a6ff; background: rgb(173 139 255 / 17%); }
+.mint { color: #73d5b3; background: rgb(115 213 179 / 17%); }
+.gold { color: #e7c46f; background: rgb(231 196 111 / 17%); }
+.coral { color: #ff9988; background: rgb(255 120 94 / 17%); }
+.candidateName { flex: 1; font-size: 0.79rem; font-weight: 650; }
+.selectionMark { color: #9aa8a1; font-family: var(--font-mono); font-size: 0.83rem; }
+.selected .selectionMark, .skipSelected .selectionMark { color: var(--color-mint); }
+.skipButton { display: flex; width: 100%; align-items: center; gap: 11px; margin-top: 10px; padding: 12px; border: 1px solid #3a4845; border-radius: 8px; background: transparent; color: #d0d9d4; cursor: pointer; font: inherit; font-size: 0.74rem; text-align: left; }
+.skipButton > span:first-child { color: #aab7b0; font-size: 1rem; }
+.skipButton .selectionMark { margin-left: auto; }
+.skipSelected { border-color: var(--color-mint); background: rgb(115 213 179 / 8%); }
+.ballotFooter { align-items: center; justify-content: space-between; gap: 12px; margin-top: 17px; padding-top: 15px; border-top: 1px solid var(--color-line); }
+.ballotFooter p { margin: 0; color: var(--color-muted); font-size: 0.68rem; line-height: 1.45; }
+.submitButton, .continueButton { display: flex; flex: 0 0 auto; align-items: center; justify-content: space-between; gap: 16px; padding: 11px 13px; border: 1px solid rgb(201 240 108 / 42%); border-radius: 7px; background: rgb(201 240 108 / 10%); color: var(--color-lime); cursor: pointer; font-size: 0.71rem; font-weight: 750; }
+.submitButton:hover:not(:disabled), .continueButton:hover { background: rgb(201 240 108 / 18%); }
+.submitButton:disabled { cursor: not-allowed; opacity: 0.45; }
+.previewNote { margin: 12px 0 0; color: #899790; font-size: 0.61rem; line-height: 1.45; }
+.resultPanel h2 { font-size: 1.35rem; }
+.resultSummary { margin: 9px 0 18px; color: #c3cec8; font-size: 0.8rem; line-height: 1.55; }
+.tally { padding: 14px; border: 1px solid #3a4845; border-radius: 8px; background: #172126; }
+.tally > .panelEyebrow { margin-bottom: 8px; }
+.tallyRow { justify-content: space-between; gap: 14px; padding: 9px 0; color: #d7dfda; font-size: 0.72rem; }
+.tallyRow + .tallyRow { border-top: 1px solid rgb(52 66 72 / 65%); }
+.tallyRow strong { color: var(--color-lime); font-family: var(--font-mono); font-size: 0.64rem; white-space: nowrap; }
+.localEjection { margin: 14px 0 0; color: #ffad9c; font-size: 0.72rem; line-height: 1.5; }
+.continueButton { width: 100%; margin-top: 15px; }
+.footer { display: flex; justify-content: space-between; gap: 14px; padding-block: 18px; border-top: 1px solid var(--color-line); color: #82918b; font-size: 0.54rem; }
+
+@media (max-width: 600px) {
+  .frame { width: min(100% - 24px, 520px); }
+  .content { gap: 19px; padding-block: 32px; }
+  .ballotPanel, .resultPanel { padding: 16px; }
+  .ballotFooter { align-items: stretch; flex-direction: column; }
+  .submitButton { width: 100%; }
+  .footer { flex-direction: column; font-size: 0.5rem; }
+}

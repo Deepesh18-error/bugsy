@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
+import ChatPanel from '../components/ChatPanel.jsx';
+import PlayerCard from '../components/PlayerCard.jsx';
 import styles from '../styles/MeetingScreen.module.css';
 
 const DISCUSSION_SECONDS = 30;
-const MAX_MESSAGE_LENGTH = 180;
-
 const INITIAL_DISCUSSION = [
   { id: 'discussion-1', name: 'Maya', tone: 'violet', text: 'What changed right before the test failed?' },
   { id: 'discussion-2', name: 'Jules', tone: 'mint', text: 'Let’s compare the edit history before we assume intent.' },
@@ -15,11 +15,9 @@ function formatTime(seconds) {
   return `${String(minutes).padStart(2, '0')}:${String(remainingSeconds).padStart(2, '0')}`;
 }
 
-export default function MeetingScreen({ room, categoryName, roundNumber, onResumeCoding }) {
+export default function MeetingScreen({ room, categoryName, roundNumber, onProceedToVote }) {
   const [secondsLeft, setSecondsLeft] = useState(DISCUSSION_SECONDS);
   const [messages, setMessages] = useState(INITIAL_DISCUSSION);
-  const [draft, setDraft] = useState('');
-  const [notice, setNotice] = useState('');
 
   useEffect(() => {
     if (secondsLeft === 0) return undefined;
@@ -31,15 +29,7 @@ export default function MeetingScreen({ room, categoryName, roundNumber, onResum
     return () => window.clearInterval(intervalId);
   }, [secondsLeft]);
 
-  function handleSendMessage(event) {
-    event.preventDefault();
-    const text = draft.trim();
-
-    if (!text) {
-      setNotice('Write a message before sending.');
-      return;
-    }
-
+  function handleSendMessage(text) {
     const currentPlayer = room.players.find((player) => player.id === room.currentPlayerId);
     setMessages((currentMessages) => [
       ...currentMessages,
@@ -51,8 +41,6 @@ export default function MeetingScreen({ room, categoryName, roundNumber, onResum
         isYou: true,
       },
     ]);
-    setDraft('');
-    setNotice('Message added to this local meeting preview.');
   }
 
   const timerIsLow = secondsLeft <= 10;
@@ -102,37 +90,16 @@ export default function MeetingScreen({ room, categoryName, roundNumber, onResum
                 </div>
               </div>
 
-              <ol className={styles.messages} aria-live="polite" aria-relevant="additions">
-                {messages.map((message) => (
-                  <li className={styles.message} key={message.id}>
-                    <span className={`${styles.messageAvatar} ${styles[message.tone] ?? ''}`} aria-hidden="true">
-                      {message.name.slice(0, 1).toUpperCase()}
-                    </span>
-                    <div className={styles.messageBody}>
-                      <strong className={styles[message.tone] ?? ''}>
-                        {message.name}{message.isYou ? ' · you' : ''}
-                      </strong>
-                      <p>{message.text}</p>
-                    </div>
-                  </li>
-                ))}
-              </ol>
-
-              <form className={styles.messageForm} onSubmit={handleSendMessage}>
-                <label className={styles.srOnly} htmlFor="meeting-message">Add to the discussion</label>
-                <input
-                  id="meeting-message"
-                  maxLength={MAX_MESSAGE_LENGTH}
-                  onChange={(event) => {
-                    setDraft(event.target.value);
-                    setNotice('');
-                  }}
-                  placeholder="Share an observation..."
-                  value={draft}
-                />
-                <button type="submit" aria-label="Send discussion message">Send</button>
-              </form>
-              <p className={styles.notice} role="status">{notice || 'Local preview discussion · messages are not sent to other players.'}</p>
+              <ChatPanel
+                className={styles.discussionChat}
+                eyebrow="DISCUSSION THREAD"
+                emptyMessage="No discussion messages yet. Share an observation."
+                localLabel="Local preview discussion · messages are not sent to other players."
+                messages={messages}
+                onSendMessage={handleSendMessage}
+                placeholder="Share an observation..."
+                title="Discussion messages"
+              />
             </section>
 
             <aside className={styles.rosterPanel} aria-labelledby="roster-title">
@@ -145,17 +112,7 @@ export default function MeetingScreen({ room, categoryName, roundNumber, onResum
               </div>
               <ul className={styles.playerList}>
                 {room.players.map((player) => (
-                  <li className={styles.playerRow} key={player.id}>
-                    <span className={`${styles.playerAvatar} ${styles[player.tone] ?? ''}`} aria-hidden="true">
-                      {player.name.slice(0, 1).toUpperCase()}
-                    </span>
-                    <span className={styles.playerName}>
-                      {player.name}{player.isYou ? ' (you)' : ''}
-                    </span>
-                    <span className={player.isYou ? styles.youTag : styles.presentTag}>
-                      {player.isYou ? 'YOU' : 'PRESENT'}
-                    </span>
-                  </li>
+                  <PlayerCard className={styles.playerRow} key={player.id} player={player} variant="compact" />
                 ))}
               </ul>
 
@@ -164,18 +121,18 @@ export default function MeetingScreen({ room, categoryName, roundNumber, onResum
                 <p>Talk about observable code changes and test results. The meeting does not identify who made a harmful edit.</p>
               </div>
 
-              <button className={styles.resumeButton} onClick={onResumeCoding} type="button">
-                End discussion &amp; resume preview <span aria-hidden="true">→</span>
+              <button className={styles.resumeButton} onClick={onProceedToVote} type="button">
+                End discussion &amp; open vote <span aria-hidden="true">→</span>
               </button>
               <p className={styles.previewNote}>
-                The separate player-voting screen is the next UI step. This preview action resumes coding for now.
+                Voting is the next phase. The local preview simulates the other players’ ballots when you submit yours.
               </p>
             </aside>
           </div>
 
           {secondsLeft === 0 && (
             <p className={styles.timeUp} role="status">
-              Discussion timer ended. The local preview is waiting for you to continue.
+              Discussion timer ended. Continue when the group is ready to vote.
             </p>
           )}
         </section>

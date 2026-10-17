@@ -29,6 +29,7 @@
 .contextCard strong { font-size: 0.78rem; }
 .contextCard p:last-child { margin: 5px 0 0; color: var(--color-muted); font-size: 0.68rem; line-height: 1.45; }
 .messages { display: flex; min-height: 150px; max-height: 310px; flex-direction: column; gap: 15px; overflow-y: auto; margin: 18px 0 14px; padding: 0 5px 0 0; list-style: none; }
+.discussionChat { min-height: 250px; }
 .message { align-items: flex-start; gap: 10px; }
 .messageAvatar, .playerAvatar { display: grid; width: 30px; height: 30px; flex: 0 0 auto; place-items: center; border-radius: 8px; background: #35434a; color: #eee; font-family: var(--font-mono); font-size: 0.68rem; font-weight: 700; }
 .violet { color: #c4a6ff; }

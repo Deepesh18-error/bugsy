@@ -1,0 +1,40 @@
+.page { min-height: 100vh; background: radial-gradient(ellipse at 50% 0%, rgb(115 213 179 / 8%), transparent 39rem), var(--color-ink); color: var(--color-text); }
+.frame { display: flex; width: min(100% - 40px, 940px); min-height: 100vh; flex-direction: column; margin-inline: auto; }
+.topbar, .brand, .roomMeta, .content, .summaryHeader, .tallyRow, .actions { display: flex; }
+.topbar { min-height: 76px; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--color-line); }
+.brand { align-items: center; gap: 10px; color: var(--color-text); font-size: 0.96rem; font-weight: 800; letter-spacing: -0.04em; text-decoration: none; }
+.brandMark { display: grid; width: 32px; height: 32px; place-items: center; border: 1px solid rgb(255 120 94 / 70%); border-radius: 10px; color: var(--color-coral); font-family: var(--font-mono); font-size: 0.65rem; transform: rotate(-4deg); }
+.roomMeta { align-items: center; gap: 9px; color: #8e9c96; font-family: var(--font-mono); font-size: 0.59rem; letter-spacing: 0.1em; }
+.roomMeta strong { padding: 8px 10px; border: 1px solid #3d4b4c; border-radius: 7px; color: var(--color-lime); font-size: 0.72rem; font-weight: 600; }
+.content { flex: 1; flex-direction: column; align-items: center; padding-block: 46px 55px; text-align: center; }
+.resultMark { display: grid; width: 60px; height: 60px; place-items: center; border: 1px solid rgb(115 213 179 / 45%); border-radius: 18px; background: rgb(115 213 179 / 8%); color: var(--color-mint); font-size: 1.7rem; }
+.eyebrow, .panelEyebrow, .footer { font-family: var(--font-mono); letter-spacing: 0.1em; text-transform: uppercase; }
+.eyebrow { margin: 18px 0 10px; color: var(--color-mint); font-size: 0.59rem; font-weight: 700; }
+.matchEyebrow { color: var(--color-lime); }
+.content h1 { max-width: 760px; margin: 0; color: var(--color-text); font-size: clamp(2.1rem, 5vw, 3.5rem); letter-spacing: -0.06em; line-height: 1.06; }
+.description { max-width: 610px; margin: 14px 0 24px; color: var(--color-muted); font-size: 0.88rem; line-height: 1.65; }
+.summaryCard { width: min(100%, 650px); padding: 21px; border: 1px solid var(--color-line); border-radius: 12px; background: var(--color-panel); text-align: left; }
+.summaryHeader { align-items: flex-start; justify-content: space-between; gap: 12px; }
+.panelEyebrow { margin: 0 0 6px; color: #91a29d; font-size: 0.55rem; font-weight: 700; }
+.summaryHeader h2 { margin: 0; font-size: 1.02rem; letter-spacing: -0.025em; }
+.outcomeTag { flex: 0 0 auto; padding: 6px 8px; border: 1px solid #41534a; border-radius: 6px; color: var(--color-lime); font-family: var(--font-mono); font-size: 0.55rem; font-weight: 700; letter-spacing: 0.05em; }
+.summaryText { margin: 12px 0 0; color: #cad4ce; font-size: 0.77rem; line-height: 1.6; }
+.tally { margin-top: 17px; padding: 13px; border: 1px solid #394741; border-radius: 8px; background: #172126; }
+.tally > .panelEyebrow { margin-bottom: 7px; }
+.tallyRow { justify-content: space-between; gap: 14px; padding: 8px 0; color: #d7dfda; font-size: 0.7rem; }
+.tallyRow + .tallyRow { border-top: 1px solid rgb(52 66 72 / 65%); }
+.tallyRow strong { color: var(--color-lime); font-family: var(--font-mono); font-size: 0.63rem; white-space: nowrap; }
+.actions { width: min(100%, 650px); flex-direction: column; gap: 9px; margin-top: 16px; }
+.primaryButton, .secondaryButton { display: flex; width: 100%; align-items: center; justify-content: space-between; padding: 13px 15px; border: 1px solid rgb(201 240 108 / 45%); border-radius: 7px; background: rgb(201 240 108 / 10%); color: var(--color-lime); cursor: pointer; font-size: 0.73rem; font-weight: 750; }
+.primaryButton:hover { background: rgb(201 240 108 / 18%); }
+.secondaryButton { border-color: #43504a; background: transparent; color: #c5d0ca; }
+.secondaryButton:hover { background: rgb(255 255 255 / 4%); }
+.previewNote { max-width: 610px; margin: 13px 0 0; color: #899790; font-size: 0.61rem; line-height: 1.5; }
+.footer { display: flex; justify-content: space-between; gap: 14px; padding-block: 18px; border-top: 1px solid var(--color-line); color: #82918b; font-size: 0.54rem; }
+
+@media (max-width: 600px) {
+  .frame { width: min(100% - 24px, 520px); }
+  .content { padding-block: 34px; }
+  .summaryCard { padding: 16px; }
+  .footer { flex-direction: column; font-size: 0.5rem; }
+}

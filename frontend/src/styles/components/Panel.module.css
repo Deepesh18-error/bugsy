@@ -1,0 +1,12 @@
+.panel {
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.framed {
+  border: 1px solid var(--color-line);
+  border-radius: 12px;
+  background: var(--color-panel);
+}
+
+.unstyled { border: 0; border-radius: 0; background: transparent; }

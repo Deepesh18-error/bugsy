@@ -1,0 +1,26 @@
+.panel { display: flex; min-height: 300px; flex-direction: column; padding: 16px; }
+.header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.eyebrow { margin: 0 0 4px; color: var(--color-mint); font-family: var(--font-mono); font-size: 0.52rem; letter-spacing: 0.1em; }
+.header h2 { margin: 0; color: var(--color-text); font-size: 1rem; }
+.localTag { flex: 0 0 auto; padding: 5px 6px; color: #a2afa9; font-family: var(--font-mono); font-size: 0.5rem; }
+.messages { display: flex; min-height: 100px; max-height: 300px; flex: 1; flex-direction: column; gap: 12px; overflow-y: auto; margin: 14px -3px 12px 0; padding: 0 5px 0 0; list-style: none; }
+.message { min-width: 0; }
+.messageName { font-family: var(--font-mono); font-size: 0.64rem; }
+.message p { overflow-wrap: anywhere; margin: 4px 0 0; color: #d0d9d4; font-size: 0.73rem; line-height: 1.45; }
+.coral { color: #ff9988; }
+.violet { color: #c4a6ff; }
+.mint { color: #73d5b3; }
+.gold { color: #e7c46f; }
+.emptyState { display: grid; min-height: 140px; flex: 1; place-content: center; justify-items: center; gap: 8px; color: var(--color-muted); text-align: center; }
+.emptyState > span { color: var(--color-mint); font-family: var(--font-mono); font-size: 1.4rem; letter-spacing: 0.2em; }
+.emptyState p { max-width: 28ch; margin: 0; font-size: 0.74rem; line-height: 1.5; }
+.form { display: flex; gap: 7px; }
+.form input { width: 100%; min-width: 0; padding: 10px 11px; border: 1px solid #40504c; border-radius: 7px; background: #131b20; color: var(--color-text); font: inherit; font-size: 0.68rem; }
+.form input::placeholder { color: #82908b; }
+.notice { min-height: 1em; margin-top: 8px; color: #91a099; font-size: 0.59rem; line-height: 1.4; }
+.srOnly { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; clip-path: inset(50%); }
+
+@media (max-width: 1050px) {
+  .panel { min-height: 260px; }
+  .messages { min-height: 80px; }
+}

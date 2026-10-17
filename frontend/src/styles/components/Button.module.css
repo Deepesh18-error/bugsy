@@ -1,0 +1,45 @@
+.button {
+  display: inline-flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+  line-height: 1.2;
+  transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease, transform 140ms ease;
+}
+
+.button:active:not(:disabled) { transform: translateY(1px); }
+.button:disabled { cursor: not-allowed; opacity: 0.58; }
+.small { min-height: 36px; padding: 0 11px; font-size: 0.72rem; }
+.medium { padding: 0 16px; font-size: 0.8rem; }
+.large { min-height: 50px; padding: 0 20px; font-size: 0.88rem; }
+.primary { background: var(--color-lime); color: #172019; }
+.primary:hover:not(:disabled) { background: #d8f69a; }
+.secondary { border-color: var(--color-line); background: var(--color-panel-raised); color: var(--color-text); }
+.secondary:hover:not(:disabled) { border-color: var(--color-mint); }
+.danger { border-color: rgb(255 120 94 / 48%); background: rgb(255 120 94 / 12%); color: #ff9b89; }
+.danger:hover:not(:disabled) { background: rgb(255 120 94 / 19%); }
+.ghost { border-color: transparent; background: transparent; color: var(--color-muted); }
+.ghost:hover:not(:disabled) { color: var(--color-text); }
+.send { min-width: 54px; border-color: #506047; background: #d7ee9a; color: #1a241b; }
+.send:hover:not(:disabled) { background: var(--color-lime); }
+.spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spin 700ms linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .button { transition: none; }
+  .spinner { animation-duration: 1400ms; }
+}

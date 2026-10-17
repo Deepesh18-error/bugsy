@@ -1,0 +1,45 @@
+.card {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 9px;
+  list-style: none;
+}
+
+.lobby { min-height: 72px; gap: 12px; padding: 10px 11px; border: 1px solid var(--color-line); border-radius: 11px; background: #172228; }
+.compact { padding-block: 8px; }
+.avatar {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 8px;
+  background: #35434a;
+  color: var(--color-text);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+.coral { background: rgb(255 120 94 / 19%); color: #ff9988; }
+.violet { background: rgb(173 139 255 / 18%); color: #c4a6ff; }
+.mint { background: rgb(115 213 179 / 17%); color: #73d5b3; }
+.gold { background: rgb(231 196 111 / 17%); color: #e7c46f; }
+.blue { background: rgb(92 169 255 / 18%); color: #8abfff; }
+.identity { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 3px; }
+.name { display: flex; min-width: 0; align-items: center; gap: 7px; overflow: hidden; color: var(--color-text); font-size: 0.72rem; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.youBadge,
+.hostBadge { flex: 0 0 auto; padding: 3px 5px; border: 1px solid #4a5854; border-radius: 4px; color: #b3c0ba; font-family: var(--font-mono); font-size: 0.48rem; letter-spacing: 0.04em; }
+.hostBadge { color: var(--color-lime); border-color: rgb(201 240 108 / 30%); }
+.meta { overflow: hidden; color: #82908d; font-size: 0.62rem; text-overflow: ellipsis; white-space: nowrap; }
+.readyBadge { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 5px; color: var(--color-muted); font-size: 0.61rem; font-weight: 700; }
+.ready { color: var(--color-mint); }
+.notReady { color: #ff9b89; }
+.connection { flex: 0 0 auto; color: #82928b; font-family: var(--font-mono); font-size: 0.49rem; font-weight: 700; letter-spacing: 0.06em; }
+.eliminated { color: #ff9988; }
+.disconnected { color: #efc566; }
+
+@media (max-width: 520px) {
+  .lobby { min-height: 66px; gap: 8px; padding-inline: 8px; }
+  .lobby .avatar { width: 34px; height: 34px; border-radius: 10px; }
+}
