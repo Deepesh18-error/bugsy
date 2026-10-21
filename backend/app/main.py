@@ -9,6 +9,7 @@ from redis.asyncio import Redis
 from redis.exceptions import RedisError
 
 from app.api.rooms import router as room_router
+from app.api.websocket import RoomConnectionManager, router as websocket_router
 from app.rooms.redis_repository import RedisRoomRepository
 from app.rooms.service import RoomPolicy, RoomService
 
@@ -59,9 +60,14 @@ async def lifespan(app: FastAPI):
             max_join_attempts=int(os.getenv("CODEMAFIA_MAX_JOIN_ATTEMPTS", "30")),
         ),
     )
+    app.state.room_connection_manager = RoomConnectionManager()
+    # The command coordinator is a later Phase 6 increment. Until it is
+    # installed, the gateway validates commands and rejects them explicitly.
+    app.state.room_coordinator = None
     try:
         yield
     finally:
+        await app.state.room_connection_manager.close_all()
         await client.aclose()
 
 
@@ -74,6 +80,7 @@ app.add_middleware(
     allow_headers=["Content-Type"],
 )
 app.include_router(room_router)
+app.include_router(websocket_router)
 
 
 @app.get("/health")

@@ -50,6 +50,19 @@ class GuestResult:
     credential_expires_at: datetime
 
 
+@dataclass(frozen=True, slots=True)
+class AuthenticatedGuest:
+    """Read-only guest identity for a WebSocket connection.
+
+    Unlike HTTP resume, authentication does not rotate the cookie. A WebSocket
+    handshake cannot reliably deliver a replacement browser cookie.
+    """
+
+    state: RoomState
+    player_id: str
+    credential_expires_at: datetime
+
+
 class RoomServiceError(Exception):
     def __init__(self, code: str, message: str, status_code: int) -> None:
         super().__init__(message)
@@ -210,6 +223,29 @@ class RoomService:
                     room, player.player_id, replacement, new_session.expires_at
                 )
         raise _invalid_session()
+
+    async def authenticate_player(self, credential: str | None) -> AuthenticatedGuest:
+        """Resolve the current cookie without changing room or session state."""
+
+        digest = _checked_credential_hash(credential)
+        session = await self._repository.load_session(digest)
+        now = self._now()
+        if session is None or now >= session.expires_at:
+            raise _invalid_session()
+        stored = await self._repository.load_room(session.room_code)
+        if stored is None or stored.state.is_closed or now >= stored.state.expires_at:
+            raise _invalid_session()
+        player = next(
+            (item for item in stored.state.players if item.player_id == session.player_id),
+            None,
+        )
+        if player is None or player.connection is ConnectionStatus.DEPARTED:
+            raise _invalid_session()
+        return AuthenticatedGuest(
+            state=stored.state,
+            player_id=session.player_id,
+            credential_expires_at=session.expires_at,
+        )
 
     async def leave_room(self, credential: str | None) -> None:
         digest = _checked_credential_hash(credential)
