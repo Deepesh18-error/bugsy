@@ -1,10 +1,10 @@
 import { useRef, useState } from 'react';
-import { PREVIEW_JOIN_CODES, ROOM_CODE_CHARACTERS, ROOM_CODE_LENGTH } from '../data/mockMatch.js';
+import { ROOM_CODE_CHARACTERS, ROOM_CODE_LENGTH } from '../api/rooms.js';
 import styles from '../styles/WelcomeScreen.module.css';
 
-const MAX_NAME_LENGTH = 18;
+const MAX_NAME_LENGTH = 24;
 
-export default function WelcomeScreen({ onCreateRoom, onJoinRoom }) {
+export default function WelcomeScreen({ onCreateRoom, onJoinRoom, onPreview, restoreError, onRetryResume, isRestoring }) {
   const [displayName, setDisplayName] = useState('');
   const [roomCode, setRoomCode] = useState('');
   const [nameError, setNameError] = useState('');
@@ -15,8 +15,8 @@ export default function WelcomeScreen({ onCreateRoom, onJoinRoom }) {
   function getValidDisplayName() {
     const cleanedName = displayName.trim();
 
-    if (!cleanedName) {
-      setNameError('Enter a name so your friends know who joined.');
+    if (cleanedName.length < 2) {
+      setNameError('Enter at least two characters so your friends know who joined.');
       return null;
     }
 
@@ -24,9 +24,9 @@ export default function WelcomeScreen({ onCreateRoom, onJoinRoom }) {
     return cleanedName;
   }
 
-  function handleSubmit(event) {
+  async function handleSubmit(event) {
     event.preventDefault();
-    if (isSubmitting) return;
+    if (isSubmitting || isRestoring) return;
 
     const action = event.nativeEvent.submitter?.value;
     const cleanedName = getValidDisplayName();
@@ -47,19 +47,15 @@ export default function WelcomeScreen({ onCreateRoom, onJoinRoom }) {
     setJoinError('');
     setIsSubmitting(action === 'join' ? 'join' : 'create');
 
-    // A short local delay makes the pending state visible before the mock result.
-    window.setTimeout(() => {
-      if (action === 'join') {
-        const result = onJoinRoom(cleanedName, roomCode);
-        if (result?.error) {
-          setJoinError(result.error);
-          setIsSubmitting(null);
-        }
-        return;
-      }
-
-      onCreateRoom(cleanedName);
-    }, 350);
+    try {
+      if (action === 'join') await onJoinRoom(cleanedName, roomCode);
+      else await onCreateRoom(cleanedName);
+    } catch (error) {
+      if (action === 'join') setJoinError(error.message);
+      else setNameError(error.message);
+    } finally {
+      setIsSubmitting(null);
+    }
   }
 
   function handleRoomCodeChange(event) {
@@ -113,12 +109,18 @@ export default function WelcomeScreen({ onCreateRoom, onJoinRoom }) {
               <span className={styles.cardGlyph} aria-hidden="true">{'{ }'}</span>
             </div>
 
-            <form aria-busy={Boolean(isSubmitting)} className={styles.entryForm} onSubmit={handleSubmit}>
+            {restoreError && (
+              <p className={styles.errorText} role="alert">
+                {restoreError}{' '}
+                <button className={styles.retryButton} onClick={onRetryResume} type="button">Try reconnecting</button>
+              </p>
+            )}
+            <form aria-busy={Boolean(isSubmitting) || isRestoring} className={styles.entryForm} onSubmit={handleSubmit}>
             <label className={styles.fieldLabel} htmlFor="display-name">Your player name</label>
             <input
               autoComplete="nickname"
               className={styles.textInput}
-              disabled={Boolean(isSubmitting)}
+                disabled={Boolean(isSubmitting) || isRestoring}
               id="display-name"
               maxLength={MAX_NAME_LENGTH}
               onChange={(event) => {
@@ -134,13 +136,13 @@ export default function WelcomeScreen({ onCreateRoom, onJoinRoom }) {
               {nameError ? (
                 <p className={styles.errorText} id="name-error" role="alert">{nameError}</p>
               ) : (
-                <p className={styles.fieldHint} id="name-hint">Up to {MAX_NAME_LENGTH} characters. You can change it later.</p>
+                <p className={styles.fieldHint} id="name-hint">2–{MAX_NAME_LENGTH} characters. Choose a name for this room.</p>
               )}
               <span aria-live="polite">{displayName.length}/{MAX_NAME_LENGTH}</span>
             </div>
 
               <div className={styles.createForm}>
-              <button className={styles.createButton} disabled={Boolean(isSubmitting)} name="action" value="create" type="submit">
+              <button className={styles.createButton} disabled={Boolean(isSubmitting) || isRestoring} name="action" value="create" type="submit">
                 <span>{isSubmitting === 'create' ? 'Creating room…' : 'Create a room'}</span><span aria-hidden="true">↗</span>
               </button>
               </div>
@@ -156,7 +158,7 @@ export default function WelcomeScreen({ onCreateRoom, onJoinRoom }) {
                   autoCapitalize="characters"
                   autoComplete="off"
                   className={`${styles.textInput} ${styles.codeInput}`}
-                  disabled={Boolean(isSubmitting)}
+                  disabled={Boolean(isSubmitting) || isRestoring}
                   id="room-code"
                   maxLength={ROOM_CODE_LENGTH}
                   onChange={handleRoomCodeChange}
@@ -166,51 +168,43 @@ export default function WelcomeScreen({ onCreateRoom, onJoinRoom }) {
                       event.currentTarget.form?.requestSubmit(joinButtonRef.current);
                     }
                   }}
-                  placeholder="ABC123"
+                  placeholder="ABCDEFG2"
                   spellCheck="false"
                   value={roomCode}
                   aria-describedby={joinError ? 'join-error' : 'code-hint'}
                   aria-invalid={Boolean(joinError)}
                 />
-                <button className={styles.joinButton} disabled={Boolean(isSubmitting)} name="action" ref={joinButtonRef} value="join" type="submit">
+                <button className={styles.joinButton} disabled={Boolean(isSubmitting) || isRestoring} name="action" ref={joinButtonRef} value="join" type="submit">
                   {isSubmitting === 'join' ? 'Checking…' : 'Join'}
                 </button>
               </div>
               {joinError ? (
                 <p className={styles.errorText} id="join-error" role="alert">{joinError}</p>
               ) : (
-                <p className={styles.fieldHint} id="code-hint">Ask the room host for their six-character code.</p>
+                <p className={styles.fieldHint} id="code-hint">Ask the room host for their eight-character code.</p>
               )}
-              <details className={styles.previewCodes}>
-                <summary>Preview room outcomes</summary>
-                <p>Use these six-character codes to preview local join responses:</p>
-                <ul>
-                  <li><code>{PREVIEW_JOIN_CODES.available}</code> joins the sample room.</li>
-                  <li><code>{PREVIEW_JOIN_CODES.full}</code> shows the room-full state.</li>
-                  <li><code>{PREVIEW_JOIN_CODES.expired}</code> shows the expired-code state.</li>
-                  <li><code>{PREVIEW_JOIN_CODES.serverError}</code> shows a simulated server error.</li>
-                </ul>
-                <p>Any other valid-format code shows the room-not-found state.</p>
-              </details>
             </div>
 
             {isSubmitting && (
               <p className={styles.loadingFeedback} role="status">
-                {isSubmitting === 'join' ? 'Checking the room code…' : 'Creating your preview room…'}
+                {isSubmitting === 'join' ? 'Checking the room code…' : 'Creating your room…'}
               </p>
             )}
 
             <p className={styles.previewNote}>
               <span aria-hidden="true">✳</span>
-              Prototype preview: rooms and players are simulated on this device.
+              Rooms are saved by the server. Ready and match play are coming in the next multiplayer phase.
             </p>
             </form>
+            <button className={styles.previewButton} disabled={Boolean(isSubmitting) || isRestoring} onClick={() => onPreview(displayName.trim() || 'Player')} type="button">
+              Explore the local match preview
+            </button>
           </section>
         </section>
 
         <footer className={styles.footer}>
           <span>BUILD TOGETHER. TRUST CAREFULLY.</span>
-          <span>CODEMAFIA · LOCAL PREVIEW</span>
+          <span>CODEMAFIA · ROOM LOBBY</span>
         </footer>
       </div>
     </main>

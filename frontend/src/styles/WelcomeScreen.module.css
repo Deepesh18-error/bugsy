@@ -259,6 +259,28 @@
   color: #ff9b89;
 }
 
+.retryButton,
+.previewButton {
+  border: 0;
+  background: transparent;
+  color: var(--color-mint);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.previewButton {
+  margin-top: 18px;
+  padding: 4px 0;
+  font-size: 0.72rem;
+}
+
+.retryButton:disabled,
+.previewButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
 .createForm {
   margin-top: 14px;
 }

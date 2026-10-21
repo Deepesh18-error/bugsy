@@ -79,6 +79,7 @@ class MatchEndReason(str, Enum):
     """The rule that committed the final match result."""
 
     IMPOSTOR_EJECTED = "impostor_ejected"
+    IMPOSTOR_DEPARTED = "impostor_departed"
     REQUIRED_TESTS_PASSED = "required_tests_passed"
     SABOTAGE_OBJECTIVES_COMPLETED = "sabotage_objectives_completed"
     FINAL_DEADLINE_SURVIVED = "final_deadline_survived"
@@ -106,6 +107,7 @@ class PlayerState:
     is_alive: bool = True
     role: PlayerRole | None = None
     emergency_meetings_used: int = 0
+    reconnect_deadline: GameDeadline | None = None
 
     def __post_init__(self) -> None:
         _require_non_blank(self.player_id, "player_id")
@@ -119,6 +121,11 @@ class PlayerState:
             raise ValueError("is_ready and is_alive must be booleans")
         if self.emergency_meetings_used not in (0, 1):
             raise ValueError("emergency_meetings_used must be 0 or 1 per match")
+        if self.connection is ConnectionStatus.DISCONNECTED:
+            if self.reconnect_deadline is None or self.reconnect_deadline.kind is not DeadlineKind.RECONNECT_GRACE:
+                raise ValueError("disconnected players require a reconnect-grace deadline")
+        elif self.reconnect_deadline is not None:
+            raise ValueError("only disconnected players may have a reconnect-grace deadline")
 
 
 @dataclass(frozen=True, slots=True)
@@ -256,8 +263,10 @@ class MatchResult:
             raise ValueError("winner must be a MatchWinner")
         if not isinstance(self.reason, MatchEndReason):
             raise ValueError("reason must be a MatchEndReason")
-        if not 1 <= self.round_number <= 4:
-            raise ValueError("match result round_number must be between 1 and 4")
+        if not 0 <= self.round_number <= 4:
+            raise ValueError("match result round_number must be between 0 and 4")
+        if self.round_number == 0 and self.reason is not MatchEndReason.IMPOSTOR_DEPARTED:
+            raise ValueError("only an impostor departure may end a match before round 1")
         _require_utc_datetime(self.ended_at, "ended_at")
         if (
             self.reason is MatchEndReason.FINAL_DEADLINE_SURVIVED
@@ -266,6 +275,7 @@ class MatchResult:
             raise ValueError("surviving the final deadline can only end round 4")
         expected_winner = {
             MatchEndReason.IMPOSTOR_EJECTED: MatchWinner.CIVILIANS,
+            MatchEndReason.IMPOSTOR_DEPARTED: MatchWinner.CIVILIANS,
             MatchEndReason.REQUIRED_TESTS_PASSED: MatchWinner.CIVILIANS,
             MatchEndReason.SABOTAGE_OBJECTIVES_COMPLETED: MatchWinner.IMPOSTOR,
             MatchEndReason.FINAL_DEADLINE_SURVIVED: MatchWinner.IMPOSTOR,
@@ -345,8 +355,11 @@ class RoomState:
         player_ids = [player.player_id for player in self.players]
         if len(player_ids) != len(set(player_ids)):
             raise ValueError("player IDs must be unique within a room")
-        if len(self.players) > self.capacity:
-            raise ValueError("room cannot contain more players than its capacity")
+        active_count = sum(
+            player.connection is not ConnectionStatus.DEPARTED for player in self.players
+        )
+        if active_count > self.capacity:
+            raise ValueError("room cannot contain more active players than its capacity")
         if self.host_player_id not in player_ids:
             raise ValueError("host_player_id must identify a player in the room")
         if self.phase is GamePhase.LOBBY and self.match is not None:

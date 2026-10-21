@@ -144,6 +144,24 @@ class OfficialTestResultAccepted(GameEvent):
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
+class SourceRevisionChanged(GameEvent):
+    occurred_at: datetime
+    request_id: str | None
+    source_revision_id: str
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class SabotageObjectiveVerified(PrivateGameEvent):
+    """The impostor alone receives objective progress and its evidence revision."""
+
+    occurred_at: datetime
+    request_id: str | None
+    recipient_player_id: str
+    objective_id: str
+    source_revision_id: str
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
 class RoundEnded(GameEvent):
     occurred_at: datetime
     request_id: str | None
@@ -170,7 +188,21 @@ class ChatMessagePosted(GameEvent):
 @dataclass(frozen=True, slots=True, kw_only=True)
 class PlayerDeparted(GameEvent):
     occurred_at: datetime
-    request_id: str
+    request_id: str | None
+    player_id: str
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class PlayerDisconnected(GameEvent):
+    occurred_at: datetime
+    request_id: str | None
+    player_id: str
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class PlayerReconnected(GameEvent):
+    occurred_at: datetime
+    request_id: str | None
     player_id: str
 
 
@@ -185,7 +217,7 @@ class HostTransferred(GameEvent):
 @dataclass(frozen=True, slots=True, kw_only=True)
 class RoomClosed(GameEvent):
     occurred_at: datetime
-    request_id: str
+    request_id: str | None
     room_code: str
 
 
@@ -194,3 +226,10 @@ class RematchRequested(GameEvent):
     occurred_at: datetime
     request_id: str
     player_id: str
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class RematchStarted(GameEvent):
+    occurred_at: datetime
+    request_id: str | None
+    room_code: str

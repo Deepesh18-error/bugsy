@@ -44,14 +44,19 @@ from .events import (
     OfficialTestRunRequested,
     PlayerBallotStored,
     PlayerDeparted,
+    PlayerDisconnected,
     PlayerEliminated,
+    PlayerReconnected,
     PlayerReadinessChanged,
     PlayerRoleAssigned,
     PlayerVoteResolved,
     PlayerVotingStarted,
     RematchRequested,
+    RematchStarted,
     RoomClosed,
     RoundEnded,
+    SabotageObjectiveVerified,
+    SourceRevisionChanged,
 )
 from .deadlines import (
     DeadlineStatus,
@@ -69,6 +74,7 @@ from .models import (
     MatchState,
     MatchWinner,
     OfficialTestResult,
+    ObjectiveStatus,
     PlayerRole,
     PlayerState,
     RoomState,
@@ -99,6 +105,10 @@ Command: TypeAlias = GameCommandType
 
 def _validate_now(now: datetime) -> None:
     require_utc_time(now)
+
+
+def _room_unavailable(state: RoomState, now: datetime) -> bool:
+    return state.is_closed or now >= state.expires_at
 
 
 def _reject(
@@ -193,7 +203,7 @@ def apply_command(
     _validate_now(now)
     request_id = command.request_id
 
-    if state.is_closed:
+    if _room_unavailable(state, now):
         return _reject(state, RejectionCode.ROOM_CLOSED, "This room is closed.", request_id)
 
     if isinstance(command, SetReady):
@@ -354,6 +364,8 @@ def resolve_category_vote(
     """
 
     _validate_now(now)
+    if _room_unavailable(state, now):
+        return _reject(state, RejectionCode.ROOM_CLOSED, "This room is closed.")
     if state.phase is not GamePhase.CATEGORY_VOTE or state.match is None:
         return _reject(state, RejectionCode.WRONG_PHASE, "Category voting is not open.")
     if selected_category_id not in SUPPORTED_CATEGORY_IDS:
@@ -437,8 +449,15 @@ def start_coding_round(
     """Enter a selected challenge round after role reveal or round results."""
 
     _validate_now(now)
+    if _room_unavailable(state, now):
+        return _reject(state, RejectionCode.ROOM_CLOSED, "This room is closed.")
     if state.phase not in {GamePhase.ROLE_REVEAL, GamePhase.ROUND_RESULT} or state.match is None:
         return _reject(state, RejectionCode.WRONG_PHASE, "A coding round cannot start in this phase.")
+    if state.phase is GamePhase.ROLE_REVEAL:
+        if state.phase_deadline is None or state.phase_deadline.kind is not DeadlineKind.ROLE_REVEAL:
+            return _reject(state, RejectionCode.INVALID_DEADLINE, "The role reveal has no valid deadline.")
+        if now < state.phase_deadline.due_at:
+            return _reject(state, RejectionCode.DEADLINE_NOT_REACHED, "The role reveal is still active.")
     if state.match.selected_category_id is None:
         return _reject(state, RejectionCode.INVALID_SELECTION, "The match has no selected category.")
     expected_round = state.match.round_number + 1
@@ -543,6 +562,8 @@ def begin_player_vote(
     """End discussion and open the separate, timed player ballot."""
 
     _validate_now(now)
+    if _room_unavailable(state, now):
+        return _reject(state, RejectionCode.ROOM_CLOSED, "This room is closed.")
     if state.phase is not GamePhase.MEETING_DISCUSSION or state.match is None:
         return _reject(state, RejectionCode.WRONG_PHASE, "Discussion is not active.")
     if state.phase_deadline is None or state.phase_deadline.kind is not DeadlineKind.MEETING_DISCUSSION:
@@ -627,6 +648,8 @@ def resolve_player_vote(
     """Resolve ballots once everyone eligible voted or the ballot deadline hit."""
 
     _validate_now(now)
+    if _room_unavailable(state, now):
+        return _reject(state, RejectionCode.ROOM_CLOSED, "This room is closed.")
     if state.phase is not GamePhase.PLAYER_VOTE or state.match is None:
         return _reject(state, RejectionCode.WRONG_PHASE, "Player voting is not active.")
     if state.phase_deadline is None or state.phase_deadline.kind is not DeadlineKind.PLAYER_VOTE:
@@ -761,6 +784,116 @@ def _resume_round_after_meeting(
     return updated_match, resumed_deadline
 
 
+def record_source_revision(
+    state: RoomState,
+    source_revision_id: str,
+    now: datetime,
+) -> TransitionOutcome:
+    """Accept a revision committed by the trusted editor coordinator.
+
+    Edits are not game commands. The coordinator serializes this fact with
+    runner results, so a result for the previous revision cannot win.
+    """
+
+    _validate_now(now)
+    if _room_unavailable(state, now):
+        return _reject(state, RejectionCode.ROOM_CLOSED, "This room is closed.")
+    if state.phase is not GamePhase.CODING_ROUND or state.match is None or state.match.current_round is None:
+        return _reject(state, RejectionCode.WRONG_PHASE, "Code can only change during a coding round.")
+    if not _deadline_is_open(state, now):
+        return _reject(state, RejectionCode.DEADLINE_PASSED, "The coding-round deadline has passed.")
+    if not source_revision_id or not source_revision_id.strip():
+        return _reject(state, RejectionCode.INVALID_SELECTION, "A source revision ID is required.")
+    current = state.match.current_round
+    if source_revision_id == current.current_source_revision_id:
+        return _accepted(state)
+    updated_round = replace(
+        current,
+        current_source_revision_id=source_revision_id,
+        official_test_result=None,
+    )
+    updated = replace(state, match=replace(state.match, current_round=updated_round))
+    return _accepted(
+        updated,
+        SourceRevisionChanged(
+            occurred_at=now, request_id=None, source_revision_id=source_revision_id
+        ),
+    )
+
+
+def record_verified_sabotage_objective(
+    state: RoomState,
+    objective_id: str,
+    source_revision_id: str,
+    now: datetime,
+) -> TransitionOutcome:
+    """Commit a trusted verifier's positive verdict for the current revision.
+
+    The verifier itself belongs to the later runner phase. Its verdict must be
+    authenticated by the coordinator; never expose this function as a player
+    command or accept a browser-reported success flag.
+    """
+
+    _validate_now(now)
+    if _room_unavailable(state, now):
+        return _reject(state, RejectionCode.ROOM_CLOSED, "This room is closed.")
+    if state.phase is not GamePhase.CODING_ROUND or state.match is None or state.match.current_round is None:
+        return _reject(state, RejectionCode.WRONG_PHASE, "An objective cannot resolve in this phase.")
+    if not _deadline_is_open(state, now):
+        return _reject(state, RejectionCode.DEADLINE_PASSED, "The coding-round deadline has passed.")
+    current = state.match.current_round
+    if source_revision_id != current.current_source_revision_id:
+        return _reject(state, RejectionCode.STALE_REVISION, "The objective verdict is for an older code revision.")
+    index = next((i for i, item in enumerate(current.sabotage_objectives) if item.objective_id == objective_id), None)
+    if index is None:
+        return _reject(state, RejectionCode.INVALID_OBJECTIVE, "This objective is not assigned to the round.")
+    impostor = next((player for player in state.players if player.role is PlayerRole.IMPOSTOR), None)
+    if impostor is None or not impostor.is_alive:
+        return _reject(state, RejectionCode.INVALID_SELECTION, "No active impostor is assigned.")
+    if current.sabotage_objectives[index].status is ObjectiveStatus.COMPLETED:
+        return _accepted(state)
+    objectives = list(current.sabotage_objectives)
+    objectives[index] = replace(
+        objectives[index],
+        status=ObjectiveStatus.COMPLETED,
+        verified_revision_id=source_revision_id,
+        completed_at=now,
+    )
+    updated_round = replace(current, sabotage_objectives=tuple(objectives))
+    updated_match = replace(state.match, current_round=updated_round)
+    events: list[GameEvent] = [
+        SabotageObjectiveVerified(
+            occurred_at=now,
+            request_id=None,
+            recipient_player_id=impostor.player_id,
+            objective_id=objective_id,
+            source_revision_id=source_revision_id,
+        )
+    ]
+    if all(item.status is ObjectiveStatus.COMPLETED for item in objectives):
+        result = MatchResult(
+            winner=MatchWinner.IMPOSTOR,
+            reason=MatchEndReason.SABOTAGE_OBJECTIVES_COMPLETED,
+            round_number=current.number,
+            ended_at=now,
+        )
+        updated_match = replace(updated_match, result=result)
+        events.append(
+            MatchEnded(
+                occurred_at=now,
+                request_id=None,
+                winner=result.winner,
+                reason=result.reason,
+                round_number=result.round_number,
+            )
+        )
+        return _accepted(
+            replace(state, phase=GamePhase.GAME_OVER, phase_deadline=None, match=updated_match),
+            *events,
+        )
+    return _accepted(replace(state, match=updated_match), *events)
+
+
 def record_official_test_result(
     state: RoomState,
     result: OfficialTestResult,
@@ -769,13 +902,21 @@ def record_official_test_result(
     """Commit a trusted test result only if it is timely and for current code."""
 
     _validate_now(now)
+    if _room_unavailable(state, now):
+        return _reject(state, RejectionCode.ROOM_CLOSED, "This room is closed.")
     if state.phase is not GamePhase.CODING_ROUND or state.match is None or state.match.current_round is None:
         return _reject(state, RejectionCode.WRONG_PHASE, "Official tests can only resolve during a coding round.")
     current_round = state.match.current_round
     if result.source_revision_id != current_round.current_source_revision_id:
         return _reject(state, RejectionCode.STALE_REVISION, "The test result is for an older code revision.")
+    if current_round.official_test_result is not None and current_round.official_test_result.run_id == result.run_id:
+        if current_round.official_test_result == result:
+            return _accepted(state)
+        return _reject(state, RejectionCode.DUPLICATE_REQUEST, "This runner ID has already been recorded with different results.")
     if result.completed_at > now:
         return _reject(state, RejectionCode.RESULT_FROM_FUTURE, "The test result completion time is in the future.")
+    if result.completed_at < current_round.started_at:
+        return _reject(state, RejectionCode.INVALID_SELECTION, "The test result predates this round.")
     if (
         not action_is_before_deadline(current_round.deadline, now)
         or not action_is_before_deadline(current_round.deadline, result.completed_at)
@@ -828,6 +969,8 @@ def end_coding_round(
     """Apply an expired coding deadline once; a repeated callback is stale."""
 
     _validate_now(now)
+    if _room_unavailable(state, now):
+        return _reject(state, RejectionCode.ROOM_CLOSED, "This room is closed.")
     if state.phase is not GamePhase.CODING_ROUND or state.match is None or state.match.current_round is None:
         return _reject(state, RejectionCode.WRONG_PHASE, "No coding round is active.")
     deadline = state.match.current_round.deadline
@@ -923,34 +1066,195 @@ def _leave_room(
     now: datetime,
 ) -> TransitionOutcome:
     index = _player_index(state, command.player_id)
-    if index is None or state.players[index].connection is ConnectionStatus.DEPARTED:
+    if index is None or state.players[index].connection is not ConnectionStatus.CONNECTED:
         return _reject(state, RejectionCode.PLAYER_NOT_FOUND, "Player is not an active room member.", command.request_id)
+    return _depart_player(state, command.player_id, now, request_id=command.request_id)
+
+
+def _depart_player(
+    state: RoomState,
+    player_id: str,
+    now: datetime,
+    *,
+    request_id: str | None,
+) -> TransitionAccepted:
+    index = _player_index(state, player_id)
+    assert index is not None
     player = state.players[index]
     players = list(state.players)
-    players[index] = replace(player, connection=ConnectionStatus.DEPARTED, is_ready=False, is_alive=False)
+    players[index] = replace(
+        player,
+        connection=ConnectionStatus.DEPARTED,
+        reconnect_deadline=None,
+        is_ready=False,
+        is_alive=False,
+    )
     events: list[GameEvent] = [
-        PlayerDeparted(occurred_at=now, request_id=command.request_id, player_id=command.player_id)
+        PlayerDeparted(occurred_at=now, request_id=request_id, player_id=player_id)
     ]
     host_id = state.host_player_id
-    if command.player_id == host_id:
+    closed = state.is_closed
+    phase = state.phase
+    phase_deadline = state.phase_deadline
+    match = state.match
+    if player_id == host_id:
         successors = [
             item for item in players
-            if item.connection is ConnectionStatus.CONNECTED and item.player_id != command.player_id
+            if item.connection is not ConnectionStatus.DEPARTED and item.player_id != player_id
         ]
         if successors:
-            successor = min(successors, key=lambda item: item.joined_at)
+            successor = min(
+                successors,
+                key=lambda item: (item.connection is not ConnectionStatus.CONNECTED, item.joined_at),
+            )
             events.append(
                 HostTransferred(
                     occurred_at=now,
-                    request_id=command.request_id,
+                    request_id=request_id,
                     previous_host_player_id=host_id,
                     new_host_player_id=successor.player_id,
                 )
             )
             host_id = successor.player_id
+        else:
+            closed = True
+            events.append(RoomClosed(occurred_at=now, request_id=request_id, room_code=state.room_code))
 
-    updated = replace(state, players=tuple(players), host_player_id=host_id)
+    if (
+        player.role is PlayerRole.IMPOSTOR
+        and match is not None
+        and state.phase not in {GamePhase.GAME_OVER, GamePhase.LOBBY}
+    ):
+        result = MatchResult(
+            winner=MatchWinner.CIVILIANS,
+            reason=MatchEndReason.IMPOSTOR_DEPARTED,
+            round_number=match.round_number,
+            ended_at=now,
+        )
+        match = replace(
+            match,
+            result=result,
+            player_votes=(),
+            meeting_started_at=None,
+            paused_round_deadline=None,
+        )
+        phase = GamePhase.GAME_OVER
+        phase_deadline = None
+        events.append(
+            MatchEnded(
+                occurred_at=now,
+                request_id=request_id,
+                winner=result.winner,
+                reason=result.reason,
+                round_number=result.round_number,
+            )
+        )
+    elif (
+        state.phase is GamePhase.CATEGORY_VOTE
+        and sum(item.connection is not ConnectionStatus.DEPARTED for item in players) < MIN_PLAYERS
+        and not closed
+    ):
+        # Roles were never assigned and the ballot can no longer form a match.
+        closed = True
+        phase_deadline = None
+        events.append(RoomClosed(occurred_at=now, request_id=request_id, room_code=state.room_code))
+
+    updated = replace(
+        state,
+        players=tuple(players),
+        host_player_id=host_id,
+        is_closed=closed,
+        phase=phase,
+        phase_deadline=None if closed else phase_deadline,
+        match=match,
+    )
     return _accepted(updated, *events)
+
+
+def mark_player_disconnected(
+    state: RoomState,
+    player_id: str,
+    reconnect_deadline: GameDeadline,
+    now: datetime,
+) -> TransitionOutcome:
+    """Record a transport loss without immediately eliminating the player."""
+
+    _validate_now(now)
+    if _room_unavailable(state, now):
+        return _reject(state, RejectionCode.ROOM_CLOSED, "This room is closed.")
+    index = _player_index(state, player_id)
+    if index is None or state.players[index].connection is ConnectionStatus.DEPARTED:
+        return _reject(state, RejectionCode.PLAYER_NOT_FOUND, "Player is not an active room member.")
+    if state.players[index].connection is ConnectionStatus.DISCONNECTED:
+        return _accepted(state)
+    error = _validate_supplied_deadline(reconnect_deadline, DeadlineKind.RECONNECT_GRACE, now)
+    if error is not None:
+        return _reject(state, error, "A future reconnect-grace deadline is required.")
+    players = list(state.players)
+    players[index] = replace(
+        players[index],
+        connection=ConnectionStatus.DISCONNECTED,
+        reconnect_deadline=reconnect_deadline,
+    )
+    return _accepted(
+        replace(state, players=tuple(players)),
+        PlayerDisconnected(occurred_at=now, request_id=None, player_id=player_id),
+    )
+
+
+def restore_player_connection(
+    state: RoomState,
+    player_id: str,
+    now: datetime,
+) -> TransitionOutcome:
+    """Restore the same player during grace after external credential checks."""
+
+    _validate_now(now)
+    if _room_unavailable(state, now):
+        return _reject(state, RejectionCode.ROOM_CLOSED, "This room is closed.")
+    index = _player_index(state, player_id)
+    if index is None or state.players[index].connection is ConnectionStatus.DEPARTED:
+        return _reject(state, RejectionCode.PLAYER_NOT_FOUND, "Player is not an active room member.")
+    player = state.players[index]
+    if player.connection is ConnectionStatus.CONNECTED:
+        return _reject(state, RejectionCode.PLAYER_ALREADY_CONNECTED, "Player is already connected.")
+    assert player.reconnect_deadline is not None
+    if not action_is_before_deadline(player.reconnect_deadline, now):
+        return _reject(state, RejectionCode.RECONNECT_GRACE_EXPIRED, "Reconnect grace has expired.")
+    players = list(state.players)
+    players[index] = replace(player, connection=ConnectionStatus.CONNECTED, reconnect_deadline=None)
+    return _accepted(
+        replace(state, players=tuple(players)),
+        PlayerReconnected(occurred_at=now, request_id=None, player_id=player_id),
+    )
+
+
+def expire_reconnect_grace(
+    state: RoomState,
+    player_id: str,
+    deadline_id: str,
+    now: datetime,
+) -> TransitionOutcome:
+    """Apply a per-player grace timeout once; old callbacks are harmless."""
+
+    _validate_now(now)
+    if state.is_closed:
+        return _reject(state, RejectionCode.ROOM_CLOSED, "This room is closed.")
+    if now >= state.expires_at:
+        return expire_room(state, now)
+    index = _player_index(state, player_id)
+    if index is None or state.players[index].connection is not ConnectionStatus.DISCONNECTED:
+        return _reject(state, RejectionCode.STALE_DEADLINE, "No reconnect grace is pending.")
+    evaluation = evaluate_deadline(
+        state.players[index].reconnect_deadline,
+        now,
+        expected_id=deadline_id,
+        expected_kind=DeadlineKind.RECONNECT_GRACE,
+    )
+    if evaluation.status is not DeadlineStatus.DUE:
+        code = RejectionCode.RECONNECT_GRACE_OPEN if evaluation.status is DeadlineStatus.OPEN else RejectionCode.STALE_DEADLINE
+        return _reject(state, code, "Reconnect grace has not expired or this callback is stale.")
+    return _depart_player(state, player_id, now, request_id=None)
 
 
 def _end_room(
@@ -984,13 +1288,30 @@ def _request_rematch(
         return _reject(state, RejectionCode.PLAYER_NOT_CONNECTED, "Only a connected room member may request a rematch.", command.request_id)
     if command.player_id in state.match.rematch_requests:
         return _accepted(state)
+    requests = (*state.match.rematch_requests, command.player_id)
     updated_match = replace(
         state.match,
-        rematch_requests=(*state.match.rematch_requests, command.player_id),
+        rematch_requests=requests,
+    )
+    requested = RematchRequested(
+        occurred_at=now, request_id=command.request_id, player_id=command.player_id
+    )
+    connected = tuple(
+        player for player in state.players
+        if player.connection is ConnectionStatus.CONNECTED
+    )
+    if len(connected) < MIN_PLAYERS or any(player.player_id not in requests for player in connected):
+        return _accepted(replace(state, match=updated_match), requested)
+
+    players = tuple(
+        replace(player, role=None, is_alive=player.connection is not ConnectionStatus.DEPARTED,
+                is_ready=False, emergency_meetings_used=0)
+        for player in state.players
     )
     return _accepted(
-        replace(state, match=updated_match),
-        RematchRequested(occurred_at=now, request_id=command.request_id, player_id=command.player_id),
+        replace(state, players=players, phase=GamePhase.LOBBY, phase_deadline=None, match=None),
+        requested,
+        RematchStarted(occurred_at=now, request_id=None, room_code=state.room_code),
     )
 
 
@@ -1007,6 +1328,8 @@ def process_deadline(
     """Process the room's current deadline; stale/repeated callbacks do nothing."""
 
     _validate_now(now)
+    if now >= state.expires_at:
+        return expire_room(state, now)
     deadline = state.phase_deadline
     evaluation = evaluate_deadline(deadline, now, expected_id=deadline_id)
     if evaluation.status in {DeadlineStatus.NO_DEADLINE, DeadlineStatus.STALE_ID}:
@@ -1037,8 +1360,19 @@ def process_deadline(
     if deadline.kind is DeadlineKind.CODING_ROUND:
         return end_coding_round(state, now, deadline_id=deadline_id)
     if deadline.kind is DeadlineKind.ROOM_EXPIRY:
-        return _accepted(
-            replace(state, is_closed=True, phase_deadline=None),
-            RoomClosed(occurred_at=now, request_id=None, room_code=state.room_code),
-        )
+        return expire_room(state, now)
     return _reject(state, RejectionCode.ACTION_NOT_SUPPORTED, "This deadline kind is not handled here.")
+
+
+def expire_room(state: RoomState, now: datetime) -> TransitionOutcome:
+    """Close a room at its absolute expiry, independent of its game phase."""
+
+    _validate_now(now)
+    if state.is_closed:
+        return _reject(state, RejectionCode.ROOM_CLOSED, "This room is already closed.")
+    if now < state.expires_at:
+        return _reject(state, RejectionCode.DEADLINE_NOT_REACHED, "The room has not expired.")
+    return _accepted(
+        replace(state, is_closed=True, phase_deadline=None),
+        RoomClosed(occurred_at=now, request_id=None, room_code=state.room_code),
+    )

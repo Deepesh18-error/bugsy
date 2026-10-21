@@ -6,7 +6,7 @@ import StatusMessage from '../components/StatusMessage.jsx';
 import { PREVIEW_MATCH } from '../data/mockMatch.js';
 import styles from '../styles/LobbyScreen.module.css';
 
-export default function LobbyScreen({ room, message, onBack, onStart, onToggleReady }) {
+export default function LobbyScreen({ room, message, isLive = false, isBusy = false, onBack, onRefresh, onStart, onToggleReady }) {
   const [copyMessage, setCopyMessage] = useState('');
   const currentPlayer = room.players.find((player) => player.id === room.currentPlayerId);
   const isHost = currentPlayer?.isHost ?? false;
@@ -14,7 +14,7 @@ export default function LobbyScreen({ room, message, onBack, onStart, onToggleRe
   const enoughPlayers = room.players.length >= PREVIEW_MATCH.minimumPlayers
     && room.players.length <= room.capacity;
   const everyoneReady = readyCount === room.players.length;
-  const canStart = isHost && enoughPlayers && everyoneReady;
+  const canStart = !isLive && isHost && enoughPlayers && everyoneReady;
 
   let startHint = 'All players are ready. The host can start the match.';
   if (!isHost) startHint = 'Waiting for the host to start the match.';
@@ -37,8 +37,8 @@ export default function LobbyScreen({ room, message, onBack, onStart, onToggleRe
           <a className={styles.brand} href="#lobby" aria-label="CodeMafia home">
             <span className={styles.brandMark} aria-hidden="true">CM</span><span>codemafia</span>
           </a>
-          <Button className={styles.backButton} onClick={onBack} variant="unstyled">
-            <span aria-hidden="true">←</span> Back to start
+          <Button className={styles.backButton} disabled={isBusy} onClick={onBack} variant="unstyled">
+            <span aria-hidden="true">←</span> {isLive ? 'Leave room' : 'Back to start'}
           </Button>
         </header>
 
@@ -50,8 +50,9 @@ export default function LobbyScreen({ room, message, onBack, onStart, onToggleRe
             </p>
             <h1>Your crew is<br /><span>getting together.</span></h1>
             <p className={styles.description}>
-              Share the room code with your friends. Once everyone is ready, the
-              host can kick off the investigation.
+              {isLive
+                ? 'Share the code with your friends. This room and its members are stored by the server.'
+                : 'Share the room code with your friends. Once everyone is ready, the host can kick off the investigation.'}
             </p>
 
             <div className={styles.roomCodeCard}>
@@ -69,7 +70,9 @@ export default function LobbyScreen({ room, message, onBack, onStart, onToggleRe
 
             <div className={styles.lobbyNote}>
               <span className={styles.noteIcon} aria-hidden="true">i</span>
-              <p>This is a local prototype. The other players shown here are sample profiles, not connected people.</p>
+              <p>{isLive
+                ? 'These are real room members. Ready, start and live presence will be connected in the next multiplayer phase.'
+                : 'This is a local prototype. The other players shown here are sample profiles, not connected people.'}</p>
             </div>
           </div>
 
@@ -91,7 +94,7 @@ export default function LobbyScreen({ room, message, onBack, onStart, onToggleRe
               )}
             </ul>
 
-            <details className={styles.connectionPreview}>
+            {!isLive && <details className={styles.connectionPreview}>
               <summary>Preview reconnecting and disconnected states</summary>
               <ul aria-label="Connection state example" className={styles.playerList}>
                 <PlayerCard
@@ -102,16 +105,22 @@ export default function LobbyScreen({ room, message, onBack, onStart, onToggleRe
               <StatusMessage status="reconnecting">
                 Reconnecting to the room… This is a simulated connection state.
               </StatusMessage>
-            </details>
+            </details>}
 
-            <div className={styles.readySummary}>
+            {!isLive && <div className={styles.readySummary}>
               <span className={styles.readyMeter} aria-hidden="true">
                 <span style={{ width: `${(readyCount / room.players.length) * 100}%` }} />
               </span>
               <span>{readyCount} of {room.players.length} ready</span>
-            </div>
+            </div>}
 
-            <div className={styles.actions}>
+            {isLive ? (
+              <div className={styles.actions}>
+                <Button className={styles.readyButton} disabled={isBusy} onClick={onRefresh} variant="unstyled">
+                  {isBusy ? 'Refreshing…' : 'Refresh players'}
+                </Button>
+              </div>
+            ) : <div className={styles.actions}>
               <Button
                 className={`${styles.readyButton} ${currentPlayer?.ready ? styles.readyButtonActive : ''}`}
                 onClick={onToggleReady}
@@ -123,13 +132,15 @@ export default function LobbyScreen({ room, message, onBack, onStart, onToggleRe
               <Button className={styles.startButton} disabled={!canStart} onClick={onStart} variant="unstyled">
                 Start match <span aria-hidden="true">→</span>
               </Button>
-            </div>
-            <StatusMessage as="p" className={styles.startHint} icon="" status={message ? 'success' : 'info'}>{message || startHint}</StatusMessage>
+            </div>}
+            <StatusMessage as="p" className={styles.startHint} icon="" status={message ? (message.includes('unavailable') || message.includes('failed') || message.includes('Cannot') ? 'error' : 'success') : 'info'}>
+              {message || (isLive ? 'Refresh to see members who joined from other browsers.' : startHint)}
+            </StatusMessage>
           </Panel>
         </section>
 
         <footer className={styles.footer}>
-          <span>BUILD TOGETHER. TRUST CAREFULLY.</span><span>CODEMAFIA · LOCAL PREVIEW</span>
+          <span>BUILD TOGETHER. TRUST CAREFULLY.</span><span>CODEMAFIA · {isLive ? 'LIVE ROOM' : 'LOCAL PREVIEW'}</span>
         </footer>
       </div>
     </main>

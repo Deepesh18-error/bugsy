@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { createRoom, joinRoom, leaveRoom, resumeRoom, toLobbyView } from './api/rooms.js';
 import {
   buildPreviewPeerVotes,
   buildPreviewRoom,
@@ -7,7 +8,6 @@ import {
   createRoomCode,
   findPreviewImpostorId,
   PREVIEW_MATCH,
-  PREVIEW_JOIN_CODES,
   PREVIEW_PEER_VOTES,
   resolvePreviewCategoryVote,
   resolvePreviewPlayerVote,
@@ -22,9 +22,21 @@ import RoleRevealScreen from './screens/RoleRevealScreen.jsx';
 import VoteScreen from './screens/VoteScreen.jsx';
 import WelcomeScreen from './screens/WelcomeScreen.jsx';
 
+// StrictMode replays mount effects in development. Reuse the same rotating
+// credential request so two simultaneous resumes cannot invalidate each other.
+let initialResumePromise;
+function resumeAtStartup() {
+  initialResumePromise ??= resumeRoom();
+  return initialResumePromise;
+}
+
 export default function App() {
   const [screen, setScreen] = useState('welcome');
   const [room, setRoom] = useState(null);
+  const [roomMode, setRoomMode] = useState(null);
+  const [isRestoring, setIsRestoring] = useState(true);
+  const [restoreError, setRestoreError] = useState('');
+  const [isLobbyBusy, setIsLobbyBusy] = useState(false);
   const [lobbyMessage, setLobbyMessage] = useState('');
   const [categoryVotes, setCategoryVotes] = useState({});
   const [myCategoryVote, setMyCategoryVote] = useState(null);
@@ -38,33 +50,82 @@ export default function App() {
   const [gameResult, setGameResult] = useState(null);
   const [matchSeed, setMatchSeed] = useState(0);
 
+  useEffect(() => {
+    let active = true;
+    resumeAtStartup().then((snapshot) => {
+      if (!active) return;
+      setRoom(toLobbyView(snapshot));
+      setRoomMode('live');
+      setScreen('lobby');
+    }).catch((error) => {
+      if (active && error.code !== 'SESSION_INVALID') setRestoreError(error.message);
+    }).finally(() => {
+      if (active) setIsRestoring(false);
+    });
+    return () => { active = false; };
+  }, []);
+
+  async function handleRetryResume() {
+    setIsRestoring(true);
+    setRestoreError('');
+    try {
+      const snapshot = await resumeRoom();
+      setRoom(toLobbyView(snapshot));
+      setRoomMode('live');
+      setScreen('lobby');
+    } catch (error) {
+      if (error.code !== 'SESSION_INVALID') setRestoreError(error.message);
+    } finally {
+      setIsRestoring(false);
+    }
+  }
+
   function enterLobby(displayName, roomCode, isCreating) {
     setRoom(buildPreviewRoom(displayName, roomCode, isCreating));
+    setRoomMode('preview');
     setLobbyMessage('');
     setScreen('lobby');
   }
 
-  function handleCreateRoom(displayName) {
+  async function handleCreateRoom(displayName) {
+    const snapshot = await createRoom(displayName);
+    setRoom(toLobbyView(snapshot));
+    setRoomMode('live');
+    setRestoreError('');
+    setLobbyMessage('Room created. Share the code with friends.');
+    setScreen('lobby');
+  }
+
+  async function handleJoinRoom(displayName, roomCode) {
+    const snapshot = await joinRoom(displayName, roomCode);
+    setRoom(toLobbyView(snapshot));
+    setRoomMode('live');
+    setRestoreError('');
+    setLobbyMessage('You joined the room.');
+    setScreen('lobby');
+  }
+
+  function handlePreview(displayName) {
     enterLobby(displayName, createRoomCode(), true);
   }
 
-  function handleJoinRoom(displayName, roomCode) {
-    // These reserved codes make the Phase 2 room states reachable without a server.
-    if (roomCode === PREVIEW_JOIN_CODES.full) {
-      return { error: 'This preview room is full. Try another room code.' };
+  async function handleRefreshLobby() {
+    setIsLobbyBusy(true);
+    setLobbyMessage('');
+    try {
+      const snapshot = await resumeRoom();
+      setRoom(toLobbyView(snapshot));
+      setLobbyMessage('Room membership refreshed.');
+    } catch (error) {
+      if (error.code === 'SESSION_INVALID') {
+        resetToWelcome();
+        setRestoreError('Your room session expired. Join again with the room code.');
+      } else {
+        setLobbyMessage(error.message);
+      }
+    } finally {
+      setIsLobbyBusy(false);
     }
-    if (roomCode === PREVIEW_JOIN_CODES.expired) {
-      return { error: 'This preview room code has expired. Ask the host for a current code.' };
-    }
-    if (roomCode === PREVIEW_JOIN_CODES.serverError) {
-      return { error: 'The preview server could not check this room. Please try again.' };
-    }
-    if (roomCode !== PREVIEW_JOIN_CODES.available) {
-      return { error: 'No active preview room uses this code. Check the code or ask the host.' };
-    }
-
-    enterLobby(displayName, roomCode, false);
-    return { success: true };
   }
 
   function handleToggleReady() {
@@ -300,8 +361,9 @@ export default function App() {
     setScreen('categoryVote');
   }
 
-  function handleLeaveLobby() {
+  function resetToWelcome() {
     setRoom(null);
+    setRoomMode(null);
     setLobbyMessage('');
     setCategoryVotes({});
     setMyCategoryVote(null);
@@ -315,6 +377,24 @@ export default function App() {
     setGameResult(null);
     setMatchSeed(0);
     setScreen('welcome');
+  }
+
+  async function handleLeaveLobby() {
+    if (roomMode === 'live') {
+      setIsLobbyBusy(true);
+      setLobbyMessage('');
+      try {
+        await leaveRoom();
+      } catch (error) {
+        if (error.code !== 'SESSION_INVALID') {
+          setLobbyMessage(error.message);
+          setIsLobbyBusy(false);
+          return;
+        }
+      }
+      setIsLobbyBusy(false);
+    }
+    resetToWelcome();
   }
 
   if (screen === 'roleReveal' && room && privateRole) {
@@ -412,7 +492,10 @@ export default function App() {
       <LobbyScreen
         room={room} 
         message={lobbyMessage}
+        isLive={roomMode === 'live'}
+        isBusy={isLobbyBusy}
         onBack={handleLeaveLobby}
+        onRefresh={handleRefreshLobby}
         onStart={handleStartMatch}
         onToggleReady={handleToggleReady}
       />
@@ -423,6 +506,10 @@ export default function App() {
     <WelcomeScreen
       onCreateRoom={handleCreateRoom}
       onJoinRoom={handleJoinRoom}
+      onPreview={handlePreview}
+      restoreError={restoreError}
+      onRetryResume={handleRetryResume}
+      isRestoring={isRestoring}
     />
   );
 }
