@@ -288,6 +288,7 @@ class MatchResult:
 class MatchState:
     """Match-wide state that persists across its rounds."""
 
+    match_id: str | None = None
     round_number: int = 0
     selected_category_id: str | None = None
     category_votes: tuple[Vote, ...] = ()
@@ -300,6 +301,8 @@ class MatchState:
     rematch_requests: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
+        if self.match_id is not None:
+            _require_non_blank(self.match_id, "match_id")
         if not 0 <= self.round_number <= 4:
             raise ValueError("round_number must be between 0 and 4")
         if self.current_round is not None and self.current_round.number != self.round_number:

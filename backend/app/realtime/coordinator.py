@@ -6,6 +6,7 @@ import asyncio
 from datetime import datetime, timezone
 from hashlib import sha256
 import json
+from uuid import uuid4
 
 from app.api.websocket_schemas import (
     ClientCommand, ServerAcknowledgment, ServerError, ServerEvent,
@@ -19,14 +20,18 @@ from app.game.idempotency import command_fingerprint, durable_receipt_is_live
 from app.game.models import DeadlineKind, GamePhase
 from app.game.outcomes import TransitionAccepted
 from app.game.randomness import ChoiceSource, SecureChoiceSource
-from app.game.transitions import apply_command
+from app.game.transitions import (
+    apply_command, end_coding_round, record_source_revision, start_coding_round,
+)
 from app.rooms.repository import CommandReceipt, RoomRepository
 from app.rooms.service import AuthenticatedGuest
 from app.realtime.connection_manager import RoomConnectionManager
 from app.realtime.deadline_scheduler import DeadlineAttempt
 from app.realtime.match_setup import (
     MatchSetupPolicy,
+    available_categories,
     category_vote_is_complete,
+    make_first_round,
     make_phase_deadline,
     resolve_match_setup,
 )
@@ -112,10 +117,15 @@ class RoomCoordinator:
                     return ServerError(code=item.code or "COMMAND_REJECTED", message=item.message or "Command rejected.", request_id=message.request_id)
 
             # Meeting timers, runner jobs, and WebSocket leave revocation are
-            # connected in later phases. Match start and category voting are
-            # now handled here using the engine's existing transitions.
+            # connected in later phases.
             unavailable = isinstance(command, (CallEmergencyMeeting, RequestOfficialTestRun, LeaveRoom))
-            if unavailable:
+            if isinstance(command, StartMatch) and not available_categories(self._setup_policy):
+                result = ServerError(code="CHALLENGE_UNAVAILABLE", message="No challenge is ready for a live match.", request_id=message.request_id)
+                updated, events = stored.state, ()
+            elif isinstance(command, CastCategoryVote) and command.category_id not in available_categories(self._setup_policy):
+                result = ServerError(code="CATEGORY_UNAVAILABLE", message="That category has no live challenge yet.", request_id=message.request_id)
+                updated, events = stored.state, ()
+            elif unavailable:
                 result: ServerAcknowledgment | ServerError = ServerError(
                     code="COMMAND_UNAVAILABLE",
                     message="This game action is not available yet.",
@@ -189,7 +199,7 @@ class RoomCoordinator:
     async def resolve_category_deadline(
         self, room_code: str, deadline_id: str
     ) -> DeadlineAttempt:
-        """Resolve one persisted vote deadline; stale callbacks have no effect."""
+        """Resolve one persisted setup/coding deadline; stale callbacks do nothing."""
 
         lock = self._locks.setdefault(room_code, asyncio.Lock())
         async with lock:
@@ -199,22 +209,25 @@ class RoomCoordinator:
                 if stored is None or stored.state.is_closed or now >= stored.state.expires_at:
                     return DeadlineAttempt.STALE
                 deadline = stored.state.phase_deadline
-                if (
-                    stored.state.phase is not GamePhase.CATEGORY_VOTE
-                    or deadline is None
-                    or deadline.kind is not DeadlineKind.CATEGORY_VOTE
-                    or deadline.deadline_id != deadline_id
-                ):
+                if (deadline is None or deadline.deadline_id != deadline_id
+                    or stored.state.phase not in {GamePhase.CATEGORY_VOTE, GamePhase.ROLE_REVEAL, GamePhase.CODING_ROUND}
+                    or deadline.kind not in {DeadlineKind.CATEGORY_VOTE, DeadlineKind.ROLE_REVEAL, DeadlineKind.CODING_ROUND}):
                     return DeadlineAttempt.STALE
                 if now < deadline.due_at:
                     return DeadlineAttempt.NOT_DUE
 
-                outcome = resolve_match_setup(
-                    stored.state,
-                    now,
-                    choices=self._choices,
-                    policy=self._setup_policy,
-                )
+                if stored.state.phase is GamePhase.CATEGORY_VOTE:
+                    outcome = resolve_match_setup(
+                        stored.state, now, choices=self._choices, policy=self._setup_policy,
+                    )
+                elif stored.state.phase is GamePhase.ROLE_REVEAL:
+                    try:
+                        round_state = make_first_round(stored.state, now, self._setup_policy)
+                    except ValueError:
+                        return DeadlineAttempt.RETRY
+                    outcome = start_coding_round(stored.state, round_state, now)
+                else:
+                    outcome = end_coding_round(stored.state, now, deadline_id=deadline_id)
                 if not isinstance(outcome, TransitionAccepted):
                     # Keep the durable entry for investigation/retry; do not
                     # silently delete a vote whose transition was rejected.
@@ -230,6 +243,47 @@ class RoomCoordinator:
                 await self._publish(room_code, projected)
                 return DeadlineAttempt.COMMITTED
             return DeadlineAttempt.RETRY
+
+    async def commit_editor_change(
+        self, room_code: str, player_id: str, document_id: str,
+        previous_revision_id: str, source: str, y_state: str,
+    ) -> str | None:
+        """Commit one trusted sync-service update before anyone sees it."""
+
+        lock = self._locks.setdefault(room_code, asyncio.Lock())
+        async with lock:
+            for _ in range(8):
+                stored = await self._repository.load_room(room_code)
+                now = datetime.now(timezone.utc)
+                if stored is None or stored.state.phase is not GamePhase.CODING_ROUND:
+                    return None
+                match = stored.state.match
+                current = match.current_round if match else None
+                if (match is None or current is None or match.match_id is None
+                    or document_id != f"{room_code}:{match.match_id}:{current.number}"
+                    or now >= current.deadline.due_at
+                    or current.current_source_revision_id != previous_revision_id
+                    or not any(player.player_id == player_id and player.is_alive
+                               and player.connection.value == "connected"
+                               for player in stored.state.players)):
+                    return None
+                revision_id = uuid4().hex
+                outcome = record_source_revision(stored.state, revision_id, now)
+                if not isinstance(outcome, TransitionAccepted):
+                    return None
+                sequence = stored.sequence + 1
+                projected = tuple(project_event(event, sequence) for event in outcome.events)
+                committed = await self._repository.commit_editor_document(
+                    stored, outcome.state, document_id=document_id,
+                    previous_revision_id=previous_revision_id, revision_id=revision_id,
+                    source=source, y_state=y_state, author_player_id=player_id,
+                    recorded_at=now,
+                )
+                if not committed:
+                    continue
+                await self._publish(room_code, projected)
+                return revision_id
+        return None
 
     async def _publish(
         self,

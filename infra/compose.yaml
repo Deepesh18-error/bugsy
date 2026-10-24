@@ -1,4 +1,16 @@
 services:
+  editor-sync:
+    profiles: ["editor"]
+    build: ../services/editor-sync
+    environment:
+      CODEMAFIA_EDITOR_SERVICE_KEY: ${CODEMAFIA_EDITOR_SERVICE_KEY:-}
+      CODEMAFIA_API_INTERNAL_URL: ${CODEMAFIA_API_INTERNAL_URL:-http://host.docker.internal:8000}
+      CODEMAFIA_EDITOR_HOST: 0.0.0.0
+      CODEMAFIA_ALLOWED_ORIGINS: ${CODEMAFIA_ALLOWED_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "127.0.0.1:1234:1234"
   redis:
     image: redis:7-alpine
     command: ["redis-server", "--appendonly", "yes"]

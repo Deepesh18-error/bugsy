@@ -65,6 +65,7 @@ class RoomSnapshot(ApiModel):
     round_number: int | None
     challenge_id: str | None
     challenge_version: str | None
+    current_source_revision_id: str | None
     players: tuple[PublicPlayer, ...]
 
 
@@ -125,6 +126,7 @@ def build_room_response(room: RoomState, player_id: str) -> RoomResponse:
             round_number=match.round_number if match else None,
             challenge_id=current_round.challenge_id if current_round else None,
             challenge_version=current_round.challenge_version if current_round else None,
+            current_source_revision_id=current_round.current_source_revision_id if current_round else None,
             players=public_players,
         )
     )

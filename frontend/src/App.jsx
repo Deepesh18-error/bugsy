@@ -40,7 +40,7 @@ const LIVE_CATEGORY_IDS = {
 const LIVE_CATEGORIES = CATEGORIES.map((category) => ({
   ...category,
   id: LIVE_CATEGORY_IDS[category.id] ?? category.id,
-}));
+})).filter((category) => category.id === 'object-oriented');
 
 export default function App() {
   const [screen, setScreen] = useState('welcome');
@@ -583,6 +583,21 @@ export default function App() {
           deadlineAt={liveRoomSnapshot?.phase_deadline_at}
         />
       );
+    }
+
+    if (phase === 'coding_round' && liveRoomSnapshot?.round_number) {
+      return <ArenaScreen
+        key={`${room.code}:${liveRoomSnapshot.round_number}`}
+        isLive
+        room={room}
+        role={liveRoomSnapshot.own_role}
+        categoryName={liveSelectedCategory?.name ?? 'Coding challenge'}
+        roundNumber={liveRoomSnapshot.round_number}
+        totalRounds={4}
+        deadlineAt={liveRoomSnapshot.phase_deadline_at}
+        revisionId={liveRoomSnapshot.current_source_revision_id}
+        connectionStatus={liveSocket.status}
+      />;
     }
 
     if (phase !== 'lobby') {

@@ -41,7 +41,8 @@ export function requireRoomSnapshot(snapshot) {
   const snapshotKeys = [
     'room_code', 'phase', 'capacity', 'expires_at', 'phase_deadline_at',
     'self_player_id', 'own_category_vote_id', 'own_role', 'own_objectives',
-    'selected_category_id', 'round_number', 'challenge_id', 'challenge_version', 'players',
+    'selected_category_id', 'round_number', 'challenge_id', 'challenge_version',
+    'current_source_revision_id', 'players',
   ];
   const playerKeys = ['player_id', 'display_name', 'connection', 'is_ready', 'is_alive', 'is_host'];
   const objectiveKeys = ['objective_id', 'status'];
@@ -60,6 +61,8 @@ export function requireRoomSnapshot(snapshot) {
       || snapshot.round_number < 0 || snapshot.round_number > 4))
     || (snapshot.challenge_id !== null && typeof snapshot.challenge_id !== 'string')
     || (snapshot.challenge_version !== null && typeof snapshot.challenge_version !== 'string')
+    || (snapshot.current_source_revision_id !== null
+      && typeof snapshot.current_source_revision_id !== 'string')
     || !Array.isArray(snapshot.own_objectives)
     || !snapshot.own_objectives.every((objective) => isRecord(objective)
       && hasOnlyKeys(objective, objectiveKeys)

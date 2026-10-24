@@ -72,6 +72,28 @@ end
 return attempts <= tonumber(ARGV[2]) and 1 or 0
 """
 
+_COMMIT_EDITOR = """
+if redis.call('GET', KEYS[1]) ~= ARGV[1] then return 0 end
+local prior = redis.call('GET', KEYS[2])
+if prior then
+    local data = cjson.decode(prior)
+    if data.revision_id ~= ARGV[3] then return 0 end
+elseif ARGV[3] ~= ARGV[4] then
+    return 0
+end
+redis.call('SET', KEYS[1], ARGV[2], 'EXAT', tonumber(ARGV[6]))
+redis.call('SET', KEYS[2], ARGV[5], 'EXAT', tonumber(ARGV[6]))
+return 1
+"""
+
+_INIT_EDITOR = """
+if redis.call('GET', KEYS[1]) ~= ARGV[1] or redis.call('EXISTS', KEYS[2]) == 1 then
+    return 0
+end
+redis.call('SET', KEYS[2], ARGV[2], 'EXAT', tonumber(ARGV[3]))
+return 1
+"""
+
 _CATEGORY_DEADLINE_INDEX = "codemafia:v1:category-deadlines"
 
 
@@ -83,13 +105,17 @@ def _room_key(code: str) -> str:
     return f"codemafia:v1:room:{code}"
 
 
+def _editor_key(document_id: str) -> str:
+    return f"codemafia:v1:editor:{document_id}"
+
+
 def _category_deadline_member(state: RoomState) -> tuple[str, float] | None:
     deadline = state.phase_deadline
     if (
         state.is_closed
-        or state.phase is not GamePhase.CATEGORY_VOTE
+        or state.phase not in {GamePhase.CATEGORY_VOTE, GamePhase.ROLE_REVEAL, GamePhase.CODING_ROUND}
         or deadline is None
-        or deadline.kind is not DeadlineKind.CATEGORY_VOTE
+        or deadline.kind not in {DeadlineKind.CATEGORY_VOTE, DeadlineKind.ROLE_REVEAL, DeadlineKind.CODING_ROUND}
     ):
         return None
     return _index_member(state.room_code, deadline.deadline_id), deadline.due_at.timestamp()
@@ -322,7 +348,7 @@ class RedisRoomRepository:
             raise RoomStorageError("Deadline index is unavailable.") from exc
 
     async def rebuild_category_deadline_index(self) -> None:
-        """Backfill votes persisted before the index existed after API startup.
+        """Backfill active setup/coding deadlines after API startup.
 
         A concurrent room transition may make an added entry stale. Its
         deadline ID is checked by the coordinator before it can do anything.
@@ -341,3 +367,63 @@ class RedisRoomRepository:
             raise RoomStorageError("Deadline index could not be rebuilt.") from exc
         except UnicodeError as exc:
             raise RoomStorageError("Stored room key is invalid.") from exc
+
+    async def load_editor_document(self, document_id: str) -> dict | None:
+        try:
+            raw = await self._client.get(_editor_key(document_id))
+        except RedisError as exc:
+            raise RoomStorageError("Editor storage is unavailable.") from exc
+        if raw is None:
+            return None
+        try:
+            value = json.loads(raw)
+            if not isinstance(value, dict):
+                raise ValueError("Editor record is not an object.")
+            return value
+        except (ValueError, TypeError) as exc:
+            raise RoomStorageError("Stored editor document is invalid.") from exc
+
+    async def initialize_editor_document(
+        self, previous: StoredRoom, *, document_id: str, source: str, y_state: str,
+    ) -> bool:
+        revision_id = previous.state.match.current_round.current_source_revision_id
+        document = json.dumps({
+            "revision_id": revision_id, "source": source,
+            "y_state": y_state, "history": [],
+        }, separators=(",", ":"), ensure_ascii=False)
+        try:
+            result = await self._client.eval(
+                _INIT_EDITOR, 2, _room_key(previous.state.room_code), _editor_key(document_id),
+                previous.raw, document, _expiry_second(previous.state.expires_at),
+            )
+            return result == 1
+        except RedisError as exc:
+            raise RoomStorageError("Editor storage is unavailable.") from exc
+
+    async def commit_editor_document(
+        self, previous: StoredRoom, updated: RoomState, *, document_id: str,
+        previous_revision_id: str, revision_id: str, source: str,
+        y_state: str, author_player_id: str, recorded_at: datetime,
+    ) -> bool:
+        prior_document = await self.load_editor_document(document_id)
+        prior_history = prior_document.get("history", []) if prior_document else []
+        history = [*prior_history, {
+            "revision_id": revision_id, "source": source,
+            "author_player_id": author_player_id, "recorded_at": recorded_at.isoformat(),
+        }][-30:]
+        document = json.dumps({
+            "revision_id": revision_id, "source": source,
+            "y_state": y_state, "history": history,
+        }, separators=(",", ":"), ensure_ascii=False)
+        try:
+            result = await self._client.eval(
+                _COMMIT_EDITOR, 2, _room_key(updated.room_code), _editor_key(document_id),
+                previous.raw, serialize_room(updated, sequence=previous.sequence + 1,
+                                             receipts=previous.receipts),
+                previous_revision_id,
+                previous.state.match.current_round.current_source_revision_id,
+                document, _expiry_second(updated.expires_at),
+            )
+            return result == 1
+        except RedisError as exc:
+            raise RoomStorageError("Editor storage is unavailable.") from exc

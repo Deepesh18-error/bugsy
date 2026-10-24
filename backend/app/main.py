@@ -10,10 +10,12 @@ from redis.asyncio import Redis
 from redis.exceptions import RedisError
 
 from app.api.rooms import router as room_router
+from app.api.editor import router as editor_router
 from app.api.websocket import router as websocket_router
 from app.realtime.connection_manager import RoomConnectionManager
 from app.realtime.coordinator import RoomCoordinator
 from app.realtime.deadline_scheduler import DeadlineScheduler
+from app.realtime.match_setup import MatchSetupPolicy
 from app.rooms.redis_repository import RedisRoomRepository
 from app.rooms.service import RoomPolicy, RoomService
 
@@ -55,6 +57,10 @@ async def lifespan(app: FastAPI):
     app.state.allowed_origins = allowed_origins
     app.state.secure_guest_cookie = secure_guest_cookie
     app.state.guest_cookie_samesite = guest_cookie_samesite
+    app.state.editor_service_key = os.getenv("CODEMAFIA_EDITOR_SERVICE_KEY", "")
+    app.state.editor_websocket_url = os.getenv(
+        "CODEMAFIA_EDITOR_WS_URL", "ws://127.0.0.1:1234/api/rooms/editor/ws",
+    )
     repository = RedisRoomRepository(client)
     app.state.room_repository = repository
     app.state.room_service = RoomService(
@@ -67,7 +73,10 @@ async def lifespan(app: FastAPI):
         ),
     )
     app.state.room_connection_manager = RoomConnectionManager(app.state.room_service.authenticate_player)
-    app.state.room_coordinator = RoomCoordinator(repository, app.state.room_connection_manager)
+    app.state.room_coordinator = RoomCoordinator(
+        repository, app.state.room_connection_manager,
+        setup_policy=MatchSetupPolicy(allow_draft_content=environment != "production"),
+    )
     deadline_stop = asyncio.Event()
     deadline_task: asyncio.Task[None] | None = None
     try:
@@ -96,6 +105,7 @@ app.add_middleware(
     allow_headers=["Content-Type"],
 )
 app.include_router(room_router)
+app.include_router(editor_router)
 app.include_router(websocket_router)
 
 

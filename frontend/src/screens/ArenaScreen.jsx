@@ -4,6 +4,7 @@ import PlayerCard from '../components/PlayerCard.jsx';
 import StatusMessage from '../components/StatusMessage.jsx';
 import { CHALLENGES, INITIAL_ARENA_CHAT, PREVIEW_MATCH } from '../data/mockMatch.js';
 import styles from '../styles/ArenaScreen.module.css';
+import LiveArena from './LiveArena.jsx';
 
 const ROUND_SECONDS = PREVIEW_MATCH.roundSeconds;
 
@@ -14,7 +15,7 @@ function formatTime(seconds) {
   return `${String(minutes).padStart(2, '0')}:${String(remainingSeconds).padStart(2, '0')}`;
 }
 
-export default function ArenaScreen({
+function PreviewArena({
   room,
   role,
   categoryId,
@@ -235,4 +236,8 @@ export default function ArenaScreen({
       )}
     </main>
   );
+}
+
+export default function ArenaScreen(props) {
+  return props.isLive ? <LiveArena {...props} /> : <PreviewArena {...props} />;
 }

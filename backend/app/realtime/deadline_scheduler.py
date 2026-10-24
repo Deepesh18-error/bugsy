@@ -1,8 +1,8 @@
-"""Retryable category-vote deadline worker, independent of Redis details.
+"""Retryable vote, reveal, and coding deadline worker.
 
 The Redis repository supplies a durable deadline index and the API lifespan
-starts this worker. Merely keeping asyncio timers in this process would lose
-every pending vote when the API restarts.
+starts this worker. Process-local timers would lose pending transitions after
+an API restart.
 """
 
 from __future__ import annotations
@@ -105,7 +105,7 @@ class DeadlineScheduler:
             except RoomStorageError:
                 # Redis outages are transient. Entries remain durable, so the
                 # next pass can resume without fabricating a room transition.
-                logger.exception("Could not process category deadlines; retrying")
+                logger.exception("Could not process match-setup deadlines; retrying")
             try:
                 await asyncio.wait_for(stop.wait(), timeout=self._poll_seconds)
             except asyncio.TimeoutError:

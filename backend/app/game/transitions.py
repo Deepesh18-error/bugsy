@@ -303,7 +303,7 @@ def _start_match(
         state,
         phase=GamePhase.CATEGORY_VOTE,
         phase_deadline=next_deadline,
-        match=MatchState(),
+        match=MatchState(match_id=next_deadline.deadline_id),
     )
     return _accepted(
         updated,

@@ -163,6 +163,7 @@ def _match(value: dict[str, Any] | None) -> MatchState | None:
     if value is None:
         return None
     return MatchState(
+        match_id=value.get("match_id"),
         round_number=value["round_number"],
         selected_category_id=value["selected_category_id"],
         category_votes=tuple(_vote(item) for item in value["category_votes"]),

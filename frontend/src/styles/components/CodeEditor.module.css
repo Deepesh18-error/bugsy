@@ -32,3 +32,17 @@
   color: var(--color-muted);
   font-size: 0.875rem;
 }
+
+:global(.yRemoteSelection) {
+  background: rgb(115 213 179 / 28%);
+}
+
+:global(.yRemoteSelectionHead) {
+  border-left: 2px solid #73d5b3;
+  height: 100%;
+}
+
+@media (max-width: 680px) {
+  .monaco,
+  .textarea { min-height: 300px; height: 48vh; }
+}

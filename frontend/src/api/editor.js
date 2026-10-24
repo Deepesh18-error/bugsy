@@ -2,6 +2,7 @@ import { SERVER_CATEGORY_IDS } from './rooms.js';
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000').replace(/\/$/, '');
 const EDITOR_SESSION_PATH = '/api/rooms/editor/session';
+const EDITOR_HISTORY_PATH = '/api/rooms/editor/history';
 
 export class EditorApiError extends Error {
   constructor(code, message) {
@@ -110,4 +111,32 @@ export async function loadEditorSession(roomCode, roundNumber) {
       starterCode: challenge.starter_code,
     },
   };
+}
+
+export async function loadEditorHistory(documentId) {
+  const response = await fetch(`${API_BASE_URL}${EDITOR_HISTORY_PATH}`, {
+    method: 'POST', credentials: 'include', cache: 'no-store',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ document_id: documentId }),
+  });
+  const payload = await response.json();
+  if (!response.ok) throw new EditorApiError(payload?.error?.code || 'HISTORY_FAILED',
+    payload?.error?.message || 'Could not load revision history.');
+  if (!Array.isArray(payload.history)) throw new EditorApiError('INVALID_RESPONSE', 'Invalid revision history.');
+  return payload.history;
+}
+
+export async function restoreEditorRevision(session, revisionId) {
+  const url = new URL(session.websocketUrl);
+  url.protocol = url.protocol === 'wss:' ? 'https:' : 'http:';
+  url.pathname = '/api/rooms/editor/restore';
+  const response = await fetch(url, {
+    method: 'POST', credentials: 'include', cache: 'no-store',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ document_id: session.documentId, revision_id: revisionId }),
+  });
+  const payload = await response.json();
+  if (!response.ok) throw new EditorApiError(payload?.error?.code || 'RESTORE_FAILED',
+    payload?.error?.message || 'Could not restore this revision.');
+  return payload.revision_id;
 }

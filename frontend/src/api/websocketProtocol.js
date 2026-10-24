@@ -32,6 +32,17 @@ const eventPayloadChecks = {
     && typeof payload.used_fallback === 'boolean',
   PlayerRoleAssigned: (payload) => hasExactKeys(payload, ['role'])
     && ['civilian', 'impostor'].includes(payload.role),
+  CodingRoundStarted: (payload) => hasExactKeys(payload, [
+    'round_number', 'category_id', 'challenge_id', 'challenge_version', 'deadline_at',
+  ]) && Number.isInteger(payload.round_number) && payload.round_number >= 1
+    && payload.round_number <= 4 && SERVER_CATEGORY_IDS.includes(payload.category_id)
+    && typeof payload.challenge_id === 'string' && payload.challenge_id.length > 0
+    && typeof payload.challenge_version === 'string' && payload.challenge_version.length > 0
+    && typeof payload.deadline_at === 'string' && Number.isFinite(Date.parse(payload.deadline_at)),
+  SourceRevisionChanged: (payload) => hasExactKeys(payload, ['source_revision_id'])
+    && typeof payload.source_revision_id === 'string' && payload.source_revision_id.length > 0,
+  RoundEnded: (payload) => hasExactKeys(payload, ['round_number'])
+    && Number.isInteger(payload.round_number) && payload.round_number >= 1 && payload.round_number <= 4,
   PlayerDeparted: (payload) => hasExactKeys(payload, ['player_id'])
     && isPlayerId(payload.player_id),
   PlayerDisconnected: (payload) => hasExactKeys(payload, ['player_id'])
