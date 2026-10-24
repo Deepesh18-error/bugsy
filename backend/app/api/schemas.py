@@ -58,6 +58,7 @@ class RoomSnapshot(ApiModel):
     expires_at: datetime
     phase_deadline_at: datetime | None
     self_player_id: str
+    own_category_vote_id: str | None
     own_role: PlayerRole | None
     own_objectives: tuple[OwnObjective, ...]
     selected_category_id: str | None
@@ -114,6 +115,10 @@ def build_room_response(room: RoomState, player_id: str) -> RoomResponse:
             expires_at=room.expires_at,
             phase_deadline_at=room.phase_deadline.due_at if room.phase_deadline else None,
             self_player_id=player_id,
+            own_category_vote_id=next(
+                (vote.target_id for vote in match.category_votes if vote.voter_id == player_id),
+                None,
+            ) if match else None,
             own_role=player.role,
             own_objectives=own_objectives,
             selected_category_id=match.selected_category_id if match else None,

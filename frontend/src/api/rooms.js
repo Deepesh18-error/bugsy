@@ -21,9 +21,9 @@ export class RoomApiError extends Error {
 }
 
 /**
- * Runtime check for the public RoomSnapshot in backend/app/api/schemas.py.
- * The browser deliberately accepts only the fields it needs for the lobby;
- * role and objective fields stay server-projected and are never inferred here.
+ * Runtime check for the authorized RoomSnapshot in backend/app/api/schemas.py.
+ * Role and ballot fields describe this authenticated guest only. The browser
+ * never infers them from the room code or other players' public data.
  */
 export function requireRoomSnapshot(snapshot) {
   const validPhase = [
@@ -36,6 +36,10 @@ export function requireRoomSnapshot(snapshot) {
     || !validPhase.includes(snapshot.phase)
     || !Number.isInteger(snapshot.capacity)
     || typeof snapshot.self_player_id !== 'string'
+    || (snapshot.phase_deadline_at !== null && typeof snapshot.phase_deadline_at !== 'string')
+    || (snapshot.own_category_vote_id !== null && typeof snapshot.own_category_vote_id !== 'string')
+    || (snapshot.own_role !== null && !['civilian', 'impostor'].includes(snapshot.own_role))
+    || (snapshot.selected_category_id !== null && typeof snapshot.selected_category_id !== 'string')
     || !Array.isArray(snapshot.players)
     || !snapshot.players.every((player) => isRecord(player)
       && typeof player.player_id === 'string'

@@ -1,5 +1,6 @@
 """FastAPI composition root; room rules and Redis are separate packages."""
 
+import asyncio
 from contextlib import asynccontextmanager
 import os
 
@@ -12,6 +13,7 @@ from app.api.rooms import router as room_router
 from app.api.websocket import router as websocket_router
 from app.realtime.connection_manager import RoomConnectionManager
 from app.realtime.coordinator import RoomCoordinator
+from app.realtime.deadline_scheduler import DeadlineScheduler
 from app.rooms.redis_repository import RedisRoomRepository
 from app.rooms.service import RoomPolicy, RoomService
 
@@ -66,11 +68,23 @@ async def lifespan(app: FastAPI):
     )
     app.state.room_connection_manager = RoomConnectionManager(app.state.room_service.authenticate_player)
     app.state.room_coordinator = RoomCoordinator(repository, app.state.room_connection_manager)
+    deadline_stop = asyncio.Event()
+    deadline_task: asyncio.Task[None] | None = None
     try:
+        await repository.rebuild_category_deadline_index()
+        deadline_task = asyncio.create_task(
+            DeadlineScheduler(repository, app.state.room_coordinator).run(deadline_stop),
+            name="category-deadline-worker",
+        )
         yield
     finally:
-        await app.state.room_connection_manager.close_all()
-        await client.aclose()
+        deadline_stop.set()
+        try:
+            if deadline_task is not None:
+                await deadline_task
+        finally:
+            await app.state.room_connection_manager.close_all()
+            await client.aclose()
 
 
 app = FastAPI(title="CodeMafia API", version="0.2.0", lifespan=lifespan)

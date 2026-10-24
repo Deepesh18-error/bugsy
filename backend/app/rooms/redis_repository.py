@@ -11,9 +11,12 @@ from hashlib import sha256
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
 
-from app.game.models import RoomState
+from app.game.models import DeadlineKind, GamePhase, RoomState
 from app.game.idempotency import DEFAULT_REQUEST_ID_TTL_SECONDS, durable_receipt_is_live
-from app.rooms.repository import CommandReceipt, GuestSession, RoomStorageError, StoredRoom
+from app.rooms.repository import (
+    CommandReceipt, GuestSession, RoomStorageError,
+    ScheduledCategoryDeadline, StoredRoom,
+)
 from app.rooms.serialization import deserialize_metadata, deserialize_room, serialize_room
 
 
@@ -23,6 +26,9 @@ if redis.call('EXISTS', KEYS[1]) == 1 or redis.call('EXISTS', KEYS[2]) == 1 then
 end
 redis.call('SET', KEYS[1], ARGV[1], 'EXAT', tonumber(ARGV[3]))
 redis.call('SET', KEYS[2], ARGV[2], 'EXAT', tonumber(ARGV[4]))
+if ARGV[5] ~= '' then
+    redis.call('ZADD', KEYS[3], tonumber(ARGV[6]), ARGV[5])
+end
 return 1
 """
 
@@ -49,6 +55,12 @@ end
 if ARGV[8] == '1' then
     redis.call('SET', KEYS[4], ARGV[9], 'EX', tonumber(ARGV[10]))
 end
+if ARGV[11] ~= '' then
+    redis.call('ZREM', KEYS[5], ARGV[11])
+end
+if ARGV[12] ~= '' then
+    redis.call('ZADD', KEYS[5], tonumber(ARGV[13]), ARGV[12])
+end
 return 1
 """
 
@@ -60,6 +72,8 @@ end
 return attempts <= tonumber(ARGV[2]) and 1 or 0
 """
 
+_CATEGORY_DEADLINE_INDEX = "codemafia:v1:category-deadlines"
+
 
 def _expiry_second(value: datetime) -> int:
     return math.ceil(value.timestamp())
@@ -67,6 +81,24 @@ def _expiry_second(value: datetime) -> int:
 
 def _room_key(code: str) -> str:
     return f"codemafia:v1:room:{code}"
+
+
+def _category_deadline_member(state: RoomState) -> tuple[str, float] | None:
+    deadline = state.phase_deadline
+    if (
+        state.is_closed
+        or state.phase is not GamePhase.CATEGORY_VOTE
+        or deadline is None
+        or deadline.kind is not DeadlineKind.CATEGORY_VOTE
+    ):
+        return None
+    return _index_member(state.room_code, deadline.deadline_id), deadline.due_at.timestamp()
+
+
+def _index_member(room_code: str, deadline_id: str) -> str:
+    if not room_code or not deadline_id or ":" in room_code:
+        raise ValueError("Invalid category deadline identity.")
+    return f"{room_code}:{deadline_id}"
 
 
 def _session_key(credential_hash: str) -> str:
@@ -106,16 +138,20 @@ class RedisRoomRepository:
     async def create_room(self, state: RoomState, session: GuestSession) -> bool:
         if session.room_code != state.room_code:
             raise ValueError("Session and room codes must match.")
+        deadline = _category_deadline_member(state)
         try:
             result = await self._client.eval(
                 _CREATE_ROOM,
-                2,
+                3,
                 _room_key(state.room_code),
                 _session_key(session.credential_hash),
+                _CATEGORY_DEADLINE_INDEX,
                 serialize_room(state),
                 _session_value(session),
                 _expiry_second(state.expires_at),
                 _expiry_second(session.expires_at),
+                deadline[0] if deadline else "",
+                deadline[1] if deadline else 0,
             )
             return result == 1
         except RedisError as exc:
@@ -203,14 +239,17 @@ class RedisRoomRepository:
             _receipt_key(updated.room_code, receipt.player_id, receipt.request_id)
             if receipt is not None else "codemafia:v1:unused:receipt"
         )
+        prior_deadline = _category_deadline_member(previous.state)
+        next_deadline = _category_deadline_member(updated)
         try:
             result = await self._client.eval(
                 _COMPARE_AND_SWAP,
-                4,
+                5,
                 _room_key(updated.room_code),
                 new_key,
                 old_key,
                 receipt_key,
+                _CATEGORY_DEADLINE_INDEX,
                 previous.raw,
                 serialize_room(updated, sequence=sequence, receipts=receipts),
                 _session_value(new_session) if new_session else b"",
@@ -221,6 +260,9 @@ class RedisRoomRepository:
                 "1" if receipt else "0",
                 _receipt_value(receipt) if receipt else b"",
                 DEFAULT_REQUEST_ID_TTL_SECONDS,
+                prior_deadline[0] if prior_deadline else "",
+                next_deadline[0] if next_deadline else "",
+                next_deadline[1] if next_deadline else 0,
             )
             return result == 1
         except RedisError as exc:
@@ -243,3 +285,59 @@ class RedisRoomRepository:
             return result == 1
         except RedisError as exc:
             raise RoomStorageError("Room storage is unavailable.") from exc
+
+    async def due_category_deadlines(
+        self, now: datetime, *, limit: int
+    ) -> tuple[ScheduledCategoryDeadline, ...]:
+        if now.tzinfo is None or now.utcoffset() is None or now.utcoffset().total_seconds() != 0:
+            raise ValueError("Deadline lookup time must use UTC.")
+        if type(limit) is not int or limit <= 0:
+            raise ValueError("Deadline lookup limit must be positive.")
+        try:
+            rows = await self._client.zrangebyscore(
+                _CATEGORY_DEADLINE_INDEX, "-inf", now.timestamp(),
+                start=0, num=limit, withscores=True,
+            )
+        except RedisError as exc:
+            raise RoomStorageError("Deadline index is unavailable.") from exc
+        entries = []
+        try:
+            for raw_member, score in rows:
+                room_code, deadline_id = raw_member.decode("ascii").split(":", 1)
+                entries.append(ScheduledCategoryDeadline(
+                    room_code, deadline_id, datetime.fromtimestamp(score, timezone.utc)
+                ))
+        except (AttributeError, UnicodeError, ValueError, OverflowError) as exc:
+            raise RoomStorageError("Deadline index contains an invalid entry.") from exc
+        return tuple(entries)
+
+    async def remove_category_deadline(
+        self, room_code: str, deadline_id: str
+    ) -> None:
+        try:
+            await self._client.zrem(
+                _CATEGORY_DEADLINE_INDEX, _index_member(room_code, deadline_id)
+            )
+        except RedisError as exc:
+            raise RoomStorageError("Deadline index is unavailable.") from exc
+
+    async def rebuild_category_deadline_index(self) -> None:
+        """Backfill votes persisted before the index existed after API startup.
+
+        A concurrent room transition may make an added entry stale. Its
+        deadline ID is checked by the coordinator before it can do anything.
+        """
+
+        try:
+            async for raw_key in self._client.scan_iter(match="codemafia:v1:room:*"):
+                room_code = raw_key.decode("ascii").removeprefix("codemafia:v1:room:")
+                stored = await self.load_room(room_code)
+                if stored is None:
+                    continue
+                deadline = _category_deadline_member(stored.state)
+                if deadline is not None:
+                    await self._client.zadd(_CATEGORY_DEADLINE_INDEX, {deadline[0]: deadline[1]})
+        except RedisError as exc:
+            raise RoomStorageError("Deadline index could not be rebuilt.") from exc
+        except UnicodeError as exc:
+            raise RoomStorageError("Stored room key is invalid.") from exc

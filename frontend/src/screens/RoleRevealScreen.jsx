@@ -32,6 +32,8 @@ export default function RoleRevealScreen({
   roomCode,
   message,
   onContinue,
+  isLive = false,
+  deadlineAt = null,
 }) {
   const roleDetails = ROLE_DETAILS[role] ?? ROLE_DETAILS.civilian;
   const roleStyle = role === 'impostor' ? styles.impostor : styles.civilian;
@@ -82,22 +84,28 @@ export default function RoleRevealScreen({
               <strong>{category}</strong>
             </div>
 
-            <button className={styles.continueButton} onClick={onContinue} type="button">
-              Continue to coding round <span aria-hidden="true">→</span>
-            </button>
+            {!isLive && (
+              <button className={styles.continueButton} onClick={onContinue} type="button">
+                Continue to coding round <span aria-hidden="true">→</span>
+              </button>
+            )}
             <p className={styles.nextStep} aria-live="polite">
-              {message || 'Keep this role private as you work through the challenge.'}
+              {isLive
+                ? `Keep this role private. Waiting for the server to start the coding round${deadlineAt ? `. Role reveal deadline: ${new Date(deadlineAt).toLocaleTimeString()}` : ''}.`
+                : message || 'Keep this role private as you work through the challenge.'}
             </p>
           </section>
 
-          <p className={styles.previewNote}>
-            This is a local preview reveal. Real roles must be assigned and delivered privately by the server.
-          </p>
+          {!isLive && (
+            <p className={styles.previewNote}>
+              This is a local preview reveal. Real roles must be assigned and delivered privately by the server.
+            </p>
+          )}
         </section>
 
         <footer className={styles.footer}>
           <span>BUILD TOGETHER. TRUST CAREFULLY.</span>
-          <span>CODEMAFIA · LOCAL PREVIEW</span>
+          <span>CODEMAFIA · {isLive ? 'LIVE ROOM' : 'LOCAL PREVIEW'}</span>
         </footer>
       </div>
     </main>

@@ -15,6 +15,19 @@ class RoomStorageError(Exception):
 
 
 @dataclass(frozen=True, slots=True)
+class ScheduledCategoryDeadline:
+    room_code: str
+    deadline_id: str
+    due_at: datetime
+
+    def __post_init__(self) -> None:
+        if not self.room_code or not self.deadline_id:
+            raise ValueError("Scheduled deadlines require room and deadline IDs.")
+        if self.due_at.tzinfo is None or self.due_at.utcoffset() != timedelta(0):
+            raise ValueError("Scheduled deadline time must use UTC.")
+
+
+@dataclass(frozen=True, slots=True)
 class StoredRoom:
     state: RoomState
     raw: bytes
@@ -108,3 +121,13 @@ class RoomRepository(Protocol):
     async def allow_join_attempt(
         self, subject_hash: str, *, window_seconds: int, max_attempts: int
     ) -> bool: ...
+
+    async def due_category_deadlines(
+        self, now: datetime, *, limit: int
+    ) -> tuple[ScheduledCategoryDeadline, ...]: ...
+
+    async def remove_category_deadline(
+        self, room_code: str, deadline_id: str
+    ) -> None: ...
+
+    async def rebuild_category_deadline_index(self) -> None: ...

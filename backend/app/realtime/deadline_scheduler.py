@@ -1,37 +1,24 @@
 """Retryable category-vote deadline worker, independent of Redis details.
 
-The durable deadline index and application lifespan will supply this worker in
-the repository/main wiring step. Merely keeping asyncio timers in this process
-would lose every pending vote when the API restarts.
+The Redis repository supplies a durable deadline index and the API lifespan
+starts this worker. Merely keeping asyncio timers in this process would lose
+every pending vote when the API restarts.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
-from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
 from math import isfinite
 from typing import Protocol
 
 from app.game.deadlines import require_utc_time
-from app.rooms.repository import RoomStorageError
+from app.rooms.repository import RoomStorageError, ScheduledCategoryDeadline
 
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass(frozen=True, slots=True)
-class ScheduledCategoryDeadline:
-    room_code: str
-    deadline_id: str
-    due_at: datetime
-
-    def __post_init__(self) -> None:
-        if not self.room_code or not self.deadline_id:
-            raise ValueError("Scheduled deadlines require room and deadline IDs.")
-        require_utc_time(self.due_at)
 
 
 class DeadlineAttempt(str, Enum):
@@ -42,7 +29,7 @@ class DeadlineAttempt(str, Enum):
 
 
 class CategoryDeadlineIndex(Protocol):
-    """Durable source implemented by the Redis repository in the next step."""
+    """Durable source implemented by the Redis room repository."""
 
     async def due_category_deadlines(
         self, now: datetime, *, limit: int

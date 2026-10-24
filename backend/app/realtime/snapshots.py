@@ -9,6 +9,8 @@ from app.game.models import RoomState
 
 
 def room_snapshot(state: RoomState, player_id: str, sequence: int, request_id: str | None = None) -> ServerSnapshot:
+    # build_room_response projects this player's own ballot and role only.
+    # Neither the full RoomState nor other players' roles enter the wire model.
     return ServerSnapshot(
         sequence=sequence,
         request_id=request_id,

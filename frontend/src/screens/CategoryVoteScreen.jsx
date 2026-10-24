@@ -8,6 +8,12 @@ export default function CategoryVoteScreen({
   result,
   onVote,
   onContinue,
+  isLive = false,
+  isSubmitting = false,
+  isDisabled = false,
+  statusMessage = '',
+  status = 'info',
+  deadlineAt = null,
 }) {
   const selectedCategory = categories.find(
     (category) => category.id === selectedCategoryId,
@@ -41,6 +47,13 @@ export default function CategoryVoteScreen({
               Your crew will tackle challenges from one shared category. Cast
               your vote, then see where the group lands.
             </p>
+            {isLive && deadlineAt && (
+              <p className={styles.description}>
+                Server vote deadline: <time dateTime={deadlineAt}>
+                  {new Date(deadlineAt).toLocaleTimeString()}
+                </time>
+              </p>
+            )}
           </div>
 
           <section className={styles.votePanel} aria-labelledby="vote-title">
@@ -61,7 +74,7 @@ export default function CategoryVoteScreen({
                   <button
                     aria-pressed={isSelected}
                     className={`${styles.categoryCard} ${isSelected ? styles.selected : ''} ${isWinner ? styles.winner : ''}`}
-                    disabled={Boolean(selectedCategoryId)}
+                    disabled={Boolean(selectedCategoryId) || isSubmitting || isDisabled || Boolean(result)}
                     key={category.id}
                     onClick={() => onVote(category.id)}
                     type="button"
@@ -73,10 +86,12 @@ export default function CategoryVoteScreen({
                       <span className={styles.categoryName}>{category.name}</span>
                       <span className={styles.categoryDescription}>{category.description}</span>
                     </span>
-                    <span className={styles.voteCount}>
-                      <strong>{voteCounts[category.id] ?? 0}</strong>
-                      <span>{(voteCounts[category.id] ?? 0) === 1 ? 'vote' : 'votes'}</span>
-                    </span>
+                    {!isLive && (
+                      <span className={styles.voteCount}>
+                        <strong>{voteCounts[category.id] ?? 0}</strong>
+                        <span>{(voteCounts[category.id] ?? 0) === 1 ? 'vote' : 'votes'}</span>
+                      </span>
+                    )}
                     {isSelected && <span className={styles.selectionMark} aria-hidden="true">✓</span>}
                     {result && isWinner && <span className={styles.winnerTag}>SELECTED</span>}
                   </button>
@@ -84,7 +99,7 @@ export default function CategoryVoteScreen({
               })}
             </div>
 
-            <div className={styles.voteStatus} aria-live="polite">
+            <div className={styles.voteStatus} aria-live="polite" role={status === 'error' ? 'alert' : 'status'}>
               {result && winningCategory ? (
                 <>
                   <span className={styles.statusIcon} aria-hidden="true">✓</span>
@@ -101,32 +116,40 @@ export default function CategoryVoteScreen({
                 <>
                   <span className={styles.statusIconWaiting} aria-hidden="true">↗</span>
                   <div>
-                    <strong>{selectedCategory ? 'Vote recorded.' : 'Your vote is still open.'}</strong>
+                    <strong>{selectedCategory
+                      ? 'Vote recorded.'
+                      : isSubmitting ? 'Recording your vote…' : 'Your vote is still open.'}</strong>
                     <p>
-                      {selectedCategory
+                      {statusMessage || (selectedCategory
                         ? `${selectedCategory.name} is your choice. Waiting for the group vote to resolve.`
-                        : 'Choose one category. You cannot change it after voting.'}
+                        : 'Choose one category. You cannot change it after voting.')}
                     </p>
                   </div>
                 </>
               )}
             </div>
 
-            {result && winningCategory && (
+            {result && winningCategory && !isLive && (
               <button className={styles.continueButton} onClick={onContinue} type="button">
                 Reveal my role <span aria-hidden="true">→</span>
               </button>
             )}
 
-            <p className={styles.previewNote}>
-              This preview includes three simulated player votes. Vote counts and the result are local demo data.
-            </p>
+            {isLive ? (
+              <p className={styles.previewNote} role={status === 'error' ? 'alert' : 'status'}>
+                Votes are private until the server selects a category. Refreshing keeps your recorded ballot.
+              </p>
+            ) : (
+              <p className={styles.previewNote}>
+                This preview includes three simulated player votes. Vote counts and the result are local demo data.
+              </p>
+            )}
           </section>
         </section>
 
         <footer className={styles.footer}>
           <span>BUILD TOGETHER. TRUST CAREFULLY.</span>
-          <span>CODEMAFIA · LOCAL PREVIEW</span>
+          <span>CODEMAFIA · {isLive ? 'LIVE ROOM' : 'LOCAL PREVIEW'}</span>
         </footer>
       </div>
     </main>
