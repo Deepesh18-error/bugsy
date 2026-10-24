@@ -1,4 +1,26 @@
 services:
+  runner:
+    profiles: ["runner"]
+    build: ../services/runner
+    init: true
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 64
+    mem_limit: 768m
+    cpus: 2
+    stop_grace_period: 35s
+    tmpfs:
+      - /runs:size=64m,mode=0700,uid=10001,gid=10001
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      CODEMAFIA_RUNNER_RESULT_HMAC_KEY: ${CODEMAFIA_RUNNER_RESULT_HMAC_KEY:-}
+      CODEMAFIA_RUNNER_MAX_CONCURRENCY: ${CODEMAFIA_RUNNER_MAX_CONCURRENCY:-2}
+      CODEMAFIA_RUNNER_RUNS_DIR: /runs
+    depends_on:
+      redis:
+        condition: service_healthy
   editor-sync:
     profiles: ["editor"]
     build: ../services/editor-sync
