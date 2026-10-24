@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 from dataclasses import asdict
 from datetime import datetime, timezone
 from hashlib import sha256
@@ -14,10 +15,14 @@ from redis.exceptions import RedisError
 from app.game.models import DeadlineKind, GamePhase, RoomState
 from app.game.idempotency import DEFAULT_REQUEST_ID_TTL_SECONDS, durable_receipt_is_live
 from app.rooms.repository import (
-    CommandReceipt, GuestSession, RoomStorageError,
+    CommandReceipt, EditorDocument, EditorRevision, GuestSession, RoomStorageError,
     ScheduledCategoryDeadline, StoredRoom,
+    editor_document_id,
 )
-from app.rooms.serialization import deserialize_metadata, deserialize_room, serialize_room
+from app.rooms.serialization import (
+    deserialize_editor_document, deserialize_metadata, deserialize_room,
+    serialize_editor_document, serialize_room,
+)
 
 
 _CREATE_ROOM = """
@@ -75,14 +80,11 @@ return attempts <= tonumber(ARGV[2]) and 1 or 0
 _COMMIT_EDITOR = """
 if redis.call('GET', KEYS[1]) ~= ARGV[1] then return 0 end
 local prior = redis.call('GET', KEYS[2])
-if prior then
-    local data = cjson.decode(prior)
-    if data.revision_id ~= ARGV[3] then return 0 end
-elseif ARGV[3] ~= ARGV[4] then
-    return 0
-end
-redis.call('SET', KEYS[1], ARGV[2], 'EXAT', tonumber(ARGV[6]))
-redis.call('SET', KEYS[2], ARGV[5], 'EXAT', tonumber(ARGV[6]))
+if not prior then return 0 end
+local data = cjson.decode(prior)
+if data.revision_id ~= ARGV[3] then return 0 end
+redis.call('SET', KEYS[1], ARGV[2], 'EXAT', tonumber(ARGV[5]))
+redis.call('SET', KEYS[2], ARGV[4], 'EXAT', tonumber(ARGV[5]))
 return 1
 """
 
@@ -106,6 +108,8 @@ def _room_key(code: str) -> str:
 
 
 def _editor_key(document_id: str) -> str:
+    if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,179}", document_id) is None:
+        raise ValueError("Invalid editor document ID.")
     return f"codemafia:v1:editor:{document_id}"
 
 
@@ -368,29 +372,26 @@ class RedisRoomRepository:
         except UnicodeError as exc:
             raise RoomStorageError("Stored room key is invalid.") from exc
 
-    async def load_editor_document(self, document_id: str) -> dict | None:
+    async def load_editor_document(self, document_id: str) -> EditorDocument | None:
         try:
             raw = await self._client.get(_editor_key(document_id))
         except RedisError as exc:
             raise RoomStorageError("Editor storage is unavailable.") from exc
         if raw is None:
             return None
-        try:
-            value = json.loads(raw)
-            if not isinstance(value, dict):
-                raise ValueError("Editor record is not an object.")
-            return value
-        except (ValueError, TypeError) as exc:
-            raise RoomStorageError("Stored editor document is invalid.") from exc
+        if not isinstance(raw, bytes):
+            raise RoomStorageError("Redis must return byte-valued editor records.")
+        return deserialize_editor_document(raw)
 
     async def initialize_editor_document(
         self, previous: StoredRoom, *, document_id: str, source: str, y_state: str,
     ) -> bool:
+        if previous.state.phase is not GamePhase.CODING_ROUND or editor_document_id(previous.state) != document_id:
+            raise ValueError("Editor seed must belong to the current coding round.")
         revision_id = previous.state.match.current_round.current_source_revision_id
-        document = json.dumps({
-            "revision_id": revision_id, "source": source,
-            "y_state": y_state, "history": [],
-        }, separators=(",", ":"), ensure_ascii=False)
+        if not revision_id.startswith("seed-"):
+            return False  # A lost document must never reset an already edited round.
+        document = serialize_editor_document(EditorDocument(revision_id, source, y_state))
         try:
             result = await self._client.eval(
                 _INIT_EDITOR, 2, _room_key(previous.state.room_code), _editor_key(document_id),
@@ -404,25 +405,29 @@ class RedisRoomRepository:
         self, previous: StoredRoom, updated: RoomState, *, document_id: str,
         previous_revision_id: str, revision_id: str, source: str,
         y_state: str, author_player_id: str, recorded_at: datetime,
+        restored_from_revision_id: str | None = None,
     ) -> bool:
+        if (previous.state.phase is not GamePhase.CODING_ROUND
+            or editor_document_id(previous.state) != document_id
+            or editor_document_id(updated) != document_id):
+            raise ValueError("Editor update must belong to the current coding round.")
         prior_document = await self.load_editor_document(document_id)
-        prior_history = prior_document.get("history", []) if prior_document else []
-        history = [*prior_history, {
-            "revision_id": revision_id, "source": source,
-            "author_player_id": author_player_id, "recorded_at": recorded_at.isoformat(),
-        }][-30:]
-        document = json.dumps({
-            "revision_id": revision_id, "source": source,
-            "y_state": y_state, "history": history,
-        }, separators=(",", ":"), ensure_ascii=False)
+        if prior_document is None or prior_document.revision_id != previous_revision_id:
+            return False
+        if previous.state.match.current_round.current_source_revision_id != previous_revision_id:
+            return False
+        if updated.match.current_round.current_source_revision_id != revision_id:
+            raise ValueError("The room revision must match the editor revision.")
+        document = serialize_editor_document(prior_document.append_revision(
+            EditorRevision(revision_id, source, author_player_id, recorded_at,
+                           restored_from_revision_id), y_state,
+        ))
         try:
             result = await self._client.eval(
                 _COMMIT_EDITOR, 2, _room_key(updated.room_code), _editor_key(document_id),
                 previous.raw, serialize_room(updated, sequence=previous.sequence + 1,
                                              receipts=previous.receipts),
-                previous_revision_id,
-                previous.state.match.current_round.current_source_revision_id,
-                document, _expiry_second(updated.expires_at),
+                previous_revision_id, document, _expiry_second(updated.expires_at),
             )
             return result == 1
         except RedisError as exc:

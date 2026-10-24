@@ -23,7 +23,7 @@ from app.game.randomness import ChoiceSource, SecureChoiceSource
 from app.game.transitions import (
     apply_command, end_coding_round, record_source_revision, start_coding_round,
 )
-from app.rooms.repository import CommandReceipt, RoomRepository
+from app.rooms.repository import CommandReceipt, RoomRepository, editor_document_id
 from app.rooms.service import AuthenticatedGuest
 from app.realtime.connection_manager import RoomConnectionManager
 from app.realtime.deadline_scheduler import DeadlineAttempt
@@ -247,6 +247,7 @@ class RoomCoordinator:
     async def commit_editor_change(
         self, room_code: str, player_id: str, document_id: str,
         previous_revision_id: str, source: str, y_state: str,
+        restored_from_revision_id: str | None = None,
     ) -> str | None:
         """Commit one trusted sync-service update before anyone sees it."""
 
@@ -260,15 +261,26 @@ class RoomCoordinator:
                 match = stored.state.match
                 current = match.current_round if match else None
                 if (match is None or current is None or match.match_id is None
-                    or document_id != f"{room_code}:{match.match_id}:{current.number}"
+                    or document_id != editor_document_id(stored.state)
                     or now >= current.deadline.due_at
                     or current.current_source_revision_id != previous_revision_id
                     or not any(player.player_id == player_id and player.is_alive
                                and player.connection.value == "connected"
                                for player in stored.state.players)):
                     return None
+                if restored_from_revision_id is not None:
+                    document = await self._repository.load_editor_document(document_id)
+                    if (document is None or not any(
+                        item.revision_id == restored_from_revision_id and item.source == source
+                        for item in document.history
+                    )):
+                        return None
                 revision_id = uuid4().hex
-                outcome = record_source_revision(stored.state, revision_id, now)
+                outcome = record_source_revision(
+                    stored.state, revision_id, now,
+                    restored_from_revision_id=restored_from_revision_id,
+                    restored_by_player_id=player_id if restored_from_revision_id else None,
+                )
                 if not isinstance(outcome, TransitionAccepted):
                     return None
                 sequence = stored.sequence + 1
@@ -277,7 +289,7 @@ class RoomCoordinator:
                     stored, outcome.state, document_id=document_id,
                     previous_revision_id=previous_revision_id, revision_id=revision_id,
                     source=source, y_state=y_state, author_player_id=player_id,
-                    recorded_at=now,
+                    recorded_at=now, restored_from_revision_id=restored_from_revision_id,
                 )
                 if not committed:
                     continue

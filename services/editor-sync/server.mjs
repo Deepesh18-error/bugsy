@@ -5,6 +5,9 @@ import * as encoding from 'lib0/encoding';
 import * as decoding from 'lib0/decoding';
 import * as sync from 'y-protocols/sync';
 import * as awarenessProtocol from 'y-protocols/awareness';
+import {
+  applyCandidateUpdate, createRestoreCandidate, loadPersistedDocument,
+} from './document_state.mjs';
 
 const PORT = Number(process.env.CODEMAFIA_EDITOR_PORT || 1234);
 const HOST = process.env.CODEMAFIA_EDITOR_HOST || '127.0.0.1';
@@ -64,16 +67,7 @@ async function backend(path, cookie, body) {
 }
 
 function newDocument(documentId, state) {
-  const doc = new Y.Doc();
-  if (state.y_state) {
-    Y.applyUpdate(doc, Buffer.from(state.y_state, 'base64'));
-  } else {
-    doc.getText('source').insert(0, state.source);
-  }
-  if (doc.getText('source').toString() !== state.source) {
-    doc.destroy();
-    throw new Error('Persisted editor source and Yjs state disagree.');
-  }
+  const doc = loadPersistedDocument(state);
   return {
     documentId, doc, revisionId: state.revision_id,
     awareness: new awarenessProtocol.Awareness(doc),
@@ -86,13 +80,10 @@ function broadcast(context, packet, except = null) {
 }
 
 async function acceptUpdate(context, socket, update) {
-  const candidate = new Y.Doc();
+  const candidate = applyCandidateUpdate(context.doc, update);
   try {
-    Y.applyUpdate(candidate, Y.encodeStateAsUpdate(context.doc));
-    Y.applyUpdate(candidate, update);
-    const source = candidate.getText('source').toString();
-    const snapshot = Y.encodeStateAsUpdate(candidate);
-    if (source.length > 65_536 || snapshot.byteLength > MAX_MESSAGE) {
+    const { source, state: snapshot } = candidate;
+    if (Buffer.byteLength(source, 'utf8') > 65_536 || snapshot.byteLength > MAX_MESSAGE) {
       socket.close(4400, 'Editor document is too large');
       return;
     }
@@ -113,6 +104,10 @@ async function acceptUpdate(context, socket, update) {
       socket.close(4403, 'Editor session is no longer authorized');
       return;
     }
+    if (error.status === 413 || error.status === 422) {
+      socket.close(4400, 'Editor document is invalid or too large');
+      return;
+    }
     // A failed commit must never become shared state. Reconnect reloads the
     // authoritative document and replays any locally retained Yjs changes.
     for (const peer of context.sockets) peer.close(4501, 'Editor state needs recovery');
@@ -120,7 +115,7 @@ async function acceptUpdate(context, socket, update) {
     context.doc.destroy();
     documents.delete(context.documentId);
   } finally {
-    candidate.destroy();
+    candidate.doc.destroy();
   }
 }
 
@@ -180,28 +175,21 @@ async function restore(context, cookie, revisionId) {
   const authority = await backend('authorize', cookie, { document_id: context.documentId });
   const target = authority.history.find((entry) => entry.revision_id === revisionId);
   if (!target) throw new Error('Revision is no longer in history.');
-  const candidate = new Y.Doc();
+  const candidate = createRestoreCandidate(context.doc, target.source);
   try {
-    Y.applyUpdate(candidate, Y.encodeStateAsUpdate(context.doc));
-    const text = candidate.getText('source');
-    candidate.transact(() => {
-      text.delete(0, text.length);
-      text.insert(0, target.source);
-    });
-    const update = Y.encodeStateAsUpdate(candidate, Y.encodeStateVector(context.doc));
-    const state = Y.encodeStateAsUpdate(candidate);
     const result = await backend('commit', cookie, {
       document_id: context.documentId,
       previous_revision_id: context.revisionId,
       source: target.source,
-      y_state: Buffer.from(state).toString('base64'),
+      y_state: Buffer.from(candidate.state).toString('base64'),
+      restored_from_revision_id: revisionId,
     });
-    Y.applyUpdate(context.doc, update);
+    Y.applyUpdate(context.doc, candidate.update);
     context.revisionId = result.revision_id;
-    broadcast(context, syncPacket((encoder) => sync.writeUpdate(encoder, update)));
+    broadcast(context, syncPacket((encoder) => sync.writeUpdate(encoder, candidate.update)));
     return result.revision_id;
   } finally {
-    candidate.destroy();
+    candidate.doc.destroy();
   }
 }
 
@@ -364,3 +352,17 @@ heartbeat.unref();
 server.listen(PORT, HOST, () => {
   console.log(`Editor sync listening on ${HOST}:${PORT}`);
 });
+
+export { server };
+
+export async function closeEditorSync() {
+  clearInterval(heartbeat);
+  for (const peer of sockets.clients) peer.terminate();
+  for (const context of documents.values()) {
+    context.awareness.destroy();
+    context.doc.destroy();
+  }
+  documents.clear();
+  if (!server.listening) return;
+  await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+}

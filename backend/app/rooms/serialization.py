@@ -27,12 +27,18 @@ from app.game.models import (
     Vote,
     VoteKind,
 )
-from app.rooms.repository import CommandReceipt, RoomStorageError
+from app.rooms.repository import (
+    CommandReceipt, EditorDocument, EditorRevision, EditorStorageLimitError, MAX_EDITOR_HISTORY_BYTES,
+    MAX_EDITOR_HISTORY_ENTRIES, RoomStorageError,
+)
 
 
 STORAGE_VERSION = 2
 LEGACY_STORAGE_VERSION = 1
 MAX_ROOM_BYTES = 1_048_576
+EDITOR_STORAGE_VERSION = 1
+MAX_EDITOR_RECORD_BYTES = 1_572_864
+MAX_LEGACY_EDITOR_RECORD_BYTES = 3_145_728
 
 
 def _json_default(value: object) -> str:
@@ -244,3 +250,54 @@ def deserialize_metadata(raw: bytes) -> tuple[int, tuple[CommandReceipt, ...]]:
         return sequence, receipts
     except (KeyError, TypeError, ValueError, UnicodeDecodeError) as exc:
         raise RoomStorageError("Stored room metadata is invalid.") from exc
+
+
+def serialize_editor_document(document: EditorDocument) -> bytes:
+    """Keep Yjs state separate from the room and bound the entire Redis value."""
+
+    encoded = json.dumps(
+        {"storage_version": EDITOR_STORAGE_VERSION, **asdict(document)},
+        default=_json_default, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
+    ).encode("utf-8")
+    if len(encoded) > MAX_EDITOR_RECORD_BYTES:
+        raise EditorStorageLimitError("Editor document exceeds the storage size limit.")
+    return encoded
+
+
+def deserialize_editor_document(raw: bytes) -> EditorDocument:
+    """Read current records and trim oversized legacy history on recovery."""
+
+    try:
+        if len(raw) > MAX_LEGACY_EDITOR_RECORD_BYTES:
+            raise ValueError("Stored editor document is too large.")
+        value = json.loads(raw)
+        if type(value) is not dict:
+            raise ValueError("Stored editor document must be an object.")
+        version = value.get("storage_version", 0)
+        if type(version) is not int or version not in {0, EDITOR_STORAGE_VERSION}:
+            raise ValueError("Unsupported editor storage version.")
+        if version == EDITOR_STORAGE_VERSION and len(raw) > MAX_EDITOR_RECORD_BYTES:
+            raise ValueError("Stored editor document exceeds the size limit.")
+        history_values = value["history"]
+        if type(history_values) is not list:
+            raise ValueError("Stored editor history must be a list.")
+        if version == EDITOR_STORAGE_VERSION and len(history_values) > MAX_EDITOR_HISTORY_ENTRIES:
+            raise ValueError("Stored editor history has too many entries.")
+        if version == 0:
+            history_values = history_values[-MAX_EDITOR_HISTORY_ENTRIES:]
+        history = [EditorRevision(
+            revision_id=item["revision_id"], source=item["source"],
+            author_player_id=item["author_player_id"],
+            recorded_at=_date(item["recorded_at"]),
+            restored_from_revision_id=item.get("restored_from_revision_id"),
+        ) for item in history_values]
+        if version == 0:
+            while sum(len(item.source.encode("utf-8")) for item in history) > MAX_EDITOR_HISTORY_BYTES:
+                history.pop(0)
+        document = EditorDocument(
+            revision_id=value["revision_id"], source=value["source"],
+            y_state=value["y_state"], history=tuple(history),
+        )
+        return document
+    except (KeyError, TypeError, ValueError, AttributeError, UnicodeDecodeError) as exc:
+        raise RoomStorageError("Stored editor document is invalid or incompatible.") from exc

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+import base64
+import binascii
 import re
 from typing import Protocol
 
@@ -12,6 +14,90 @@ from app.game.models import RoomState
 
 class RoomStorageError(Exception):
     """Redis is unavailable or a stored room cannot be safely decoded."""
+
+
+class EditorStorageLimitError(RoomStorageError):
+    """A proposed editor value exceeds its documented storage budget."""
+
+
+MAX_EDITOR_SOURCE_BYTES = 65_536
+MAX_EDITOR_Y_STATE_BYTES = 262_144
+MAX_EDITOR_HISTORY_ENTRIES = 30
+MAX_EDITOR_HISTORY_BYTES = 1_048_576
+
+
+def editor_document_id(state: RoomState) -> str | None:
+    """One identity per room, match, and round; never reuse a prior document."""
+
+    match = state.match
+    current = match.current_round if match is not None else None
+    if match is None or match.match_id is None or current is None:
+        return None
+    return f"{state.room_code}:{match.match_id}:{current.number}"
+
+
+@dataclass(frozen=True, slots=True)
+class EditorRevision:
+    revision_id: str
+    source: str
+    author_player_id: str
+    recorded_at: datetime
+    restored_from_revision_id: str | None = None
+
+    def __post_init__(self) -> None:
+        if (not isinstance(self.revision_id, str)
+            or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}", self.revision_id) is None
+            or not isinstance(self.author_player_id, str) or not self.author_player_id):
+            raise ValueError("Editor revision identity is required.")
+        if not isinstance(self.source, str) or len(self.source.encode("utf-8")) > MAX_EDITOR_SOURCE_BYTES:
+            raise ValueError("Editor revision source exceeds the size limit.")
+        if self.restored_from_revision_id is not None and (
+            not isinstance(self.restored_from_revision_id, str)
+            or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}", self.restored_from_revision_id) is None
+        ):
+            raise ValueError("Restore origin must identify a revision.")
+        if not isinstance(self.recorded_at, datetime) or self.recorded_at.tzinfo is None or self.recorded_at.utcoffset() != timedelta(0):
+            raise ValueError("Editor revision time must use UTC.")
+
+
+@dataclass(frozen=True, slots=True)
+class EditorDocument:
+    revision_id: str
+    source: str
+    y_state: str
+    history: tuple[EditorRevision, ...] = ()
+
+    def __post_init__(self) -> None:
+        if (not isinstance(self.revision_id, str)
+            or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}", self.revision_id) is None):
+            raise ValueError("Editor document revision is required.")
+        if not isinstance(self.source, str) or len(self.source.encode("utf-8")) > MAX_EDITOR_SOURCE_BYTES:
+            raise ValueError("Editor source exceeds the size limit.")
+        if not isinstance(self.y_state, str):
+            raise ValueError("Editor Yjs state must be base64 text.")
+        try:
+            raw = base64.b64decode(self.y_state, validate=True)
+        except (ValueError, binascii.Error) as exc:
+            raise ValueError("Editor Yjs state is not valid base64.") from exc
+        if not raw or len(raw) > MAX_EDITOR_Y_STATE_BYTES:
+            raise ValueError("Editor Yjs state exceeds the size limit.")
+        if not isinstance(self.history, tuple) or any(not isinstance(item, EditorRevision) for item in self.history):
+            raise ValueError("Editor history must contain revision records.")
+        if len(self.history) > MAX_EDITOR_HISTORY_ENTRIES:
+            raise ValueError("Editor history has too many entries.")
+        if sum(len(item.source.encode("utf-8")) for item in self.history) > MAX_EDITOR_HISTORY_BYTES:
+            raise ValueError("Editor history exceeds the byte budget.")
+        if self.history and self.history[-1].revision_id != self.revision_id:
+            raise ValueError("The last history entry must be the current revision.")
+        ids = [item.revision_id for item in self.history]
+        if len(ids) != len(set(ids)):
+            raise ValueError("Editor history has duplicate revision IDs.")
+
+    def append_revision(self, revision: EditorRevision, y_state: str) -> EditorDocument:
+        history = [*self.history, revision][-MAX_EDITOR_HISTORY_ENTRIES:]
+        while sum(len(item.source.encode("utf-8")) for item in history) > MAX_EDITOR_HISTORY_BYTES:
+            history.pop(0)
+        return EditorDocument(revision.revision_id, revision.source, y_state, tuple(history))
 
 
 @dataclass(frozen=True, slots=True)
@@ -132,7 +218,7 @@ class RoomRepository(Protocol):
 
     async def rebuild_category_deadline_index(self) -> None: ...
 
-    async def load_editor_document(self, document_id: str) -> dict | None: ...
+    async def load_editor_document(self, document_id: str) -> EditorDocument | None: ...
 
     async def initialize_editor_document(
         self, previous: StoredRoom, *, document_id: str, source: str, y_state: str,
@@ -142,4 +228,5 @@ class RoomRepository(Protocol):
         self, previous: StoredRoom, updated: RoomState, *, document_id: str,
         previous_revision_id: str, revision_id: str, source: str,
         y_state: str, author_player_id: str, recorded_at: datetime,
+        restored_from_revision_id: str | None = None,
     ) -> bool: ...

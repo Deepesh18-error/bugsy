@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
+import re
 
 
 class GamePhase(str, Enum):
@@ -239,6 +240,8 @@ class RoundState:
         _require_non_blank(self.challenge_version, "challenge_version")
         _require_non_blank(self.challenge_content_digest, "challenge_content_digest")
         _require_non_blank(self.current_source_revision_id, "current_source_revision_id")
+        if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}", self.current_source_revision_id) is None:
+            raise ValueError("current_source_revision_id has an invalid format")
         _require_utc_datetime(self.started_at, "started_at")
         if self.deadline.kind is not DeadlineKind.CODING_ROUND:
             raise ValueError("round deadline must have kind CODING_ROUND")
@@ -303,6 +306,8 @@ class MatchState:
     def __post_init__(self) -> None:
         if self.match_id is not None:
             _require_non_blank(self.match_id, "match_id")
+            if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}", self.match_id) is None:
+                raise ValueError("match_id has an invalid format")
         if not 0 <= self.round_number <= 4:
             raise ValueError("round_number must be between 0 and 4")
         if self.current_round is not None and self.current_round.number != self.round_number:

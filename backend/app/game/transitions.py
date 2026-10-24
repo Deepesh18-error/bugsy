@@ -57,6 +57,7 @@ from .events import (
     RoundEnded,
     SabotageObjectiveVerified,
     SourceRevisionChanged,
+    SourceRevisionRestored,
 )
 from .deadlines import (
     DeadlineStatus,
@@ -788,6 +789,9 @@ def record_source_revision(
     state: RoomState,
     source_revision_id: str,
     now: datetime,
+    *,
+    restored_from_revision_id: str | None = None,
+    restored_by_player_id: str | None = None,
 ) -> TransitionOutcome:
     """Accept a revision committed by the trusted editor coordinator.
 
@@ -802,8 +806,16 @@ def record_source_revision(
         return _reject(state, RejectionCode.WRONG_PHASE, "Code can only change during a coding round.")
     if not _deadline_is_open(state, now):
         return _reject(state, RejectionCode.DEADLINE_PASSED, "The coding-round deadline has passed.")
-    if not source_revision_id or not source_revision_id.strip():
+    if (not isinstance(source_revision_id, str) or not source_revision_id.strip()
+        or len(source_revision_id) > 80):
         return _reject(state, RejectionCode.INVALID_SELECTION, "A source revision ID is required.")
+    if (restored_from_revision_id is None) != (restored_by_player_id is None):
+        return _reject(state, RejectionCode.INVALID_SELECTION, "Restore origin and actor must be supplied together.")
+    if restored_from_revision_id is not None and (
+        not isinstance(restored_from_revision_id, str) or not restored_from_revision_id.strip()
+        or not isinstance(restored_by_player_id, str) or not restored_by_player_id.strip()
+    ):
+        return _reject(state, RejectionCode.INVALID_SELECTION, "Restore metadata is invalid.")
     current = state.match.current_round
     if source_revision_id == current.current_source_revision_id:
         return _accepted(state)
@@ -813,12 +825,16 @@ def record_source_revision(
         official_test_result=None,
     )
     updated = replace(state, match=replace(state.match, current_round=updated_round))
-    return _accepted(
-        updated,
-        SourceRevisionChanged(
-            occurred_at=now, request_id=None, source_revision_id=source_revision_id
-        ),
-    )
+    events: list[GameEvent] = [SourceRevisionChanged(
+        occurred_at=now, request_id=None, source_revision_id=source_revision_id,
+    )]
+    if restored_from_revision_id is not None:
+        events.append(SourceRevisionRestored(
+            occurred_at=now, request_id=None, source_revision_id=source_revision_id,
+            restored_from_revision_id=restored_from_revision_id,
+            restored_by_player_id=restored_by_player_id,
+        ))
+    return _accepted(updated, *events)
 
 
 def record_verified_sabotage_objective(

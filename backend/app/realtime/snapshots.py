@@ -65,6 +65,10 @@ def project_event(event: domain.GameEvent, sequence: int) -> tuple[str | None, S
         payload = {"source_revision_id": event.source_revision_id, "all_required_tests_passed": event.all_required_tests_passed}
     elif isinstance(event, domain.SourceRevisionChanged):
         payload = {"source_revision_id": event.source_revision_id}
+    elif isinstance(event, domain.SourceRevisionRestored):
+        payload = {"source_revision_id": event.source_revision_id,
+                   "restored_from_revision_id": event.restored_from_revision_id,
+                   "restored_by_player_id": event.restored_by_player_id}
     elif isinstance(event, domain.RoundEnded):
         payload = {"round_number": event.round_number}
     elif isinstance(event, domain.MatchEnded):

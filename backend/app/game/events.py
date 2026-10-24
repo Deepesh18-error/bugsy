@@ -151,6 +151,17 @@ class SourceRevisionChanged(GameEvent):
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
+class SourceRevisionRestored(GameEvent):
+    """A prior source snapshot was restored as a new current revision."""
+
+    occurred_at: datetime
+    request_id: str | None
+    source_revision_id: str
+    restored_from_revision_id: str
+    restored_by_player_id: str
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
 class SabotageObjectiveVerified(PrivateGameEvent):
     """The impostor alone receives objective progress and its evidence revision."""
 

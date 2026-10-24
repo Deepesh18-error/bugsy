@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import binascii
 from datetime import datetime, timezone
 import hmac
 import os
@@ -14,7 +15,10 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.api.rooms import COOKIE_NAME, _require_allowed_origin
 from app.challenges.loader import ChallengeLoadError, load_challenge
 from app.game.models import ConnectionStatus, GamePhase
-from app.rooms.repository import RoomStorageError
+from app.rooms.repository import (
+    EditorStorageLimitError, MAX_EDITOR_SOURCE_BYTES, MAX_EDITOR_Y_STATE_BYTES,
+    RoomStorageError, editor_document_id,
+)
 from app.rooms.service import RoomServiceError
 
 
@@ -38,6 +42,7 @@ class CommitRequest(DocumentRequest):
     previous_revision_id: str = Field(min_length=1, max_length=80)
     source: str = Field(max_length=65_536)
     y_state: str = Field(min_length=1, max_length=400_000)
+    restored_from_revision_id: str | None = Field(default=None, min_length=1, max_length=80)
 
 
 class InitializeRequest(DocumentRequest):
@@ -68,10 +73,18 @@ def _round_for(state, player_id: str, document_id: str | None = None):
         or player.connection is ConnectionStatus.DEPARTED or not player.is_alive
         or datetime.now(timezone.utc) >= current.deadline.due_at):
         return None
-    expected = f"{state.room_code}:{match.match_id}:{current.number}"
+    expected = editor_document_id(state)
     if document_id is not None and document_id != expected:
         return None
     return current, expected
+
+
+def _history_payload(document):
+    return [{"revision_id": item.revision_id, "source": item.source,
+             "author_player_id": item.author_player_id,
+             "recorded_at": item.recorded_at.isoformat(),
+             "restored_from_revision_id": item.restored_from_revision_id}
+            for item in document.history] if document else []
 
 
 @router.post("/session")
@@ -115,8 +128,13 @@ async def editor_history(payload: DocumentRequest, request: Request):
         if _round_for(guest.state, guest.player_id, payload.document_id) is None:
             return _error("EDITOR_FORBIDDEN", "This document is not your current round.", 403)
         document = await request.app.state.room_repository.load_editor_document(payload.document_id)
-        return JSONResponse({"revision_id": (document or {}).get("revision_id"),
-                             "history": (document or {}).get("history", [])},
+        current, _ = _round_for(guest.state, guest.player_id, payload.document_id)
+        if document is None and not current.current_source_revision_id.startswith("seed-"):
+            return _error("REVISION_CONFLICT", "The saved editor document is missing.", 409)
+        if document is not None and document.revision_id != current.current_source_revision_id:
+            return _error("REVISION_CONFLICT", "Editor storage and room revision disagree.", 409)
+        return JSONResponse({"revision_id": document.revision_id if document else None,
+                             "history": _history_payload(document)},
                             headers={"Cache-Control": "no-store"})
     except RoomServiceError as exc:
         return _error(exc.code, exc.message, exc.status_code)
@@ -135,6 +153,10 @@ async def authorize_editor(payload: DocumentRequest, request: Request):
             return _error("EDITOR_FORBIDDEN", "This document is not your current round.", 403)
         current, _ = selected
         document = await request.app.state.room_repository.load_editor_document(payload.document_id)
+        if document is None and not current.current_source_revision_id.startswith("seed-"):
+            return _error("REVISION_CONFLICT", "The saved editor document is missing.", 409)
+        if document is not None and document.revision_id != current.current_source_revision_id:
+            return _error("REVISION_CONFLICT", "Editor storage and room revision disagree.", 409)
         loaded = load_challenge(current.challenge_id, current.challenge_version)
         if loaded.content_digest != current.challenge_content_digest:
             return _error("CHALLENGE_CHANGED", "The pinned challenge has changed.", 409)
@@ -143,9 +165,9 @@ async def authorize_editor(payload: DocumentRequest, request: Request):
             "display_name": next(player.display_name for player in guest.state.players
                                  if player.player_id == guest.player_id),
             "revision_id": current.current_source_revision_id,
-            "source": document["source"] if document else loaded.challenge.starter_code,
-            "y_state": document["y_state"] if document else None,
-            "history": document.get("history", []) if document else [],
+            "source": document.source if document else loaded.challenge.starter_code,
+            "y_state": document.y_state if document else None,
+            "history": _history_payload(document),
         }, headers={"Cache-Control": "no-store"})
     except RoomServiceError as exc:
         return _error(exc.code, exc.message, exc.status_code)
@@ -160,9 +182,10 @@ async def commit_editor(payload: CommitRequest, request: Request):
     if not _service_authorized(request):
         return _error("EDITOR_FORBIDDEN", "Editor service is not authorized.", 403)
     try:
-        if len(base64.b64decode(payload.y_state, validate=True)) > 262_144:
+        if (len(base64.b64decode(payload.y_state, validate=True)) > MAX_EDITOR_Y_STATE_BYTES
+            or len(payload.source.encode("utf-8")) > MAX_EDITOR_SOURCE_BYTES):
             return _error("EDITOR_TOO_LARGE", "Editor document is too large.", 413)
-    except ValueError:
+    except (ValueError, binascii.Error):
         return _error("INVALID_DOCUMENT", "Editor document encoding is invalid.", 422)
     try:
         guest = await _guest(request)
@@ -171,12 +194,15 @@ async def commit_editor(payload: CommitRequest, request: Request):
         revision_id = await request.app.state.room_coordinator.commit_editor_change(
             guest.state.room_code, guest.player_id, payload.document_id,
             payload.previous_revision_id, payload.source, payload.y_state,
+            payload.restored_from_revision_id,
         )
         if revision_id is None:
             return _error("REVISION_CONFLICT", "The coding round or source revision changed.", 409)
         return JSONResponse({"revision_id": revision_id}, headers={"Cache-Control": "no-store"})
     except RoomServiceError as exc:
         return _error(exc.code, exc.message, exc.status_code)
+    except EditorStorageLimitError:
+        return _error("EDITOR_TOO_LARGE", "Editor document is too large.", 413)
     except RoomStorageError:
         return _error("STORAGE_UNAVAILABLE", "Editor storage is unavailable.", 503)
 
@@ -186,9 +212,9 @@ async def initialize_editor(payload: InitializeRequest, request: Request):
     if not _service_authorized(request):
         return _error("EDITOR_FORBIDDEN", "Editor service is not authorized.", 403)
     try:
-        if len(base64.b64decode(payload.y_state, validate=True)) > 262_144:
+        if len(base64.b64decode(payload.y_state, validate=True)) > MAX_EDITOR_Y_STATE_BYTES:
             return _error("EDITOR_TOO_LARGE", "Editor document is too large.", 413)
-    except ValueError:
+    except (ValueError, binascii.Error):
         return _error("INVALID_DOCUMENT", "Editor document encoding is invalid.", 422)
     try:
         guest = await _guest(request)
@@ -209,6 +235,8 @@ async def initialize_editor(payload: InitializeRequest, request: Request):
                             headers={"Cache-Control": "no-store"})
     except RoomServiceError as exc:
         return _error(exc.code, exc.message, exc.status_code)
+    except EditorStorageLimitError:
+        return _error("EDITOR_TOO_LARGE", "Editor document is too large.", 413)
     except RoomStorageError:
         return _error("STORAGE_UNAVAILABLE", "Editor storage is unavailable.", 503)
     except ChallengeLoadError:
