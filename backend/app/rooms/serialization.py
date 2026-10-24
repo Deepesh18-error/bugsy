@@ -7,6 +7,7 @@ from dataclasses import asdict
 from datetime import datetime
 from typing import Any
 
+from app.game.idempotency import MAX_LEGACY_EMBEDDED_RECEIPTS
 from app.game.models import (
     ConnectionStatus,
     DeadlineKind,
@@ -29,7 +30,8 @@ from app.game.models import (
 from app.rooms.repository import CommandReceipt, RoomStorageError
 
 
-STORAGE_VERSION = 1
+STORAGE_VERSION = 2
+LEGACY_STORAGE_VERSION = 1
 MAX_ROOM_BYTES = 1_048_576
 
 
@@ -42,6 +44,15 @@ def _json_default(value: object) -> str:
 def serialize_room(
     state: RoomState, *, sequence: int = 0, receipts: tuple[CommandReceipt, ...] = ()
 ) -> bytes:
+    if type(sequence) is not int or sequence < 0:
+        raise ValueError("Room sequence must be non-negative.")
+    if len(receipts) > MAX_LEGACY_EMBEDDED_RECEIPTS:
+        raise ValueError("Too many legacy request receipts.")
+    if any(item.sequence > sequence for item in receipts):
+        raise ValueError("Receipt sequence cannot exceed the room sequence.")
+    keys = [(item.player_id, item.request_id) for item in receipts]
+    if len(keys) != len(set(keys)):
+        raise ValueError("Duplicate request receipts are not allowed.")
     payload = {
         "storage_version": STORAGE_VERSION,
         "room": asdict(state),
@@ -176,7 +187,7 @@ def deserialize_room(raw: bytes) -> RoomState:
         if len(raw) > MAX_ROOM_BYTES:
             raise ValueError("Stored room exceeds the size limit.")
         payload = json.loads(raw)
-        if payload["storage_version"] != STORAGE_VERSION:
+        if type(payload["storage_version"]) is not int or payload["storage_version"] not in (LEGACY_STORAGE_VERSION, STORAGE_VERSION):
             raise ValueError("Unsupported room storage version.")
         value = payload["room"]
         return RoomState(
@@ -196,13 +207,21 @@ def deserialize_room(raw: bytes) -> RoomState:
 
 
 def deserialize_metadata(raw: bytes) -> tuple[int, tuple[CommandReceipt, ...]]:
-    """Read transport metadata; legacy Phase 5 rooms begin at sequence zero."""
+    """Read and validate v2 metadata; accept earlier v1 active rooms."""
 
     try:
+        if len(raw) > MAX_ROOM_BYTES:
+            raise ValueError("Stored room exceeds the size limit.")
         value = json.loads(raw)
-        sequence = value.get("sequence", 0)
+        version = value["storage_version"]
+        if type(version) is not int or version not in (LEGACY_STORAGE_VERSION, STORAGE_VERSION):
+            raise ValueError("Unsupported room storage version.")
+        sequence = value["sequence"] if version == STORAGE_VERSION else value.get("sequence", 0)
         if type(sequence) is not int or sequence < 0:
             raise ValueError("Invalid room sequence.")
+        receipt_values = value["receipts"] if version == STORAGE_VERSION else value.get("receipts", [])
+        if not isinstance(receipt_values, list) or len(receipt_values) > MAX_LEGACY_EMBEDDED_RECEIPTS:
+            raise ValueError("Invalid stored receipts.")
         receipts = tuple(
             CommandReceipt(
                 player_id=item["player_id"],
@@ -214,10 +233,13 @@ def deserialize_metadata(raw: bytes) -> tuple[int, tuple[CommandReceipt, ...]]:
                 message=item["message"],
                 recorded_at=_date(item["recorded_at"]),
             )
-            for item in value.get("receipts", [])
+            for item in receipt_values
         )
-        if len(receipts) > 1024:
-            raise ValueError("Too many stored command receipts.")
+        if any(item.sequence > sequence for item in receipts):
+            raise ValueError("Receipt sequence exceeds room sequence.")
+        keys = [(item.player_id, item.request_id) for item in receipts]
+        if len(keys) != len(set(keys)):
+            raise ValueError("Duplicate stored request ID.")
         return sequence, receipts
     except (KeyError, TypeError, ValueError, UnicodeDecodeError) as exc:
         raise RoomStorageError("Stored room metadata is invalid.") from exc

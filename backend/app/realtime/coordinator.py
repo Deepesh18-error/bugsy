@@ -13,6 +13,7 @@ from app.game.commands import (
     LeaveRoom, RequestOfficialTestRun, RequestRematch, SendChatMessage,
     SetReady, StartMatch,
 )
+from app.game.idempotency import command_fingerprint, durable_receipt_is_live
 from app.game.outcomes import TransitionAccepted
 from app.game.transitions import apply_command
 from app.rooms.repository import CommandReceipt, RoomRepository
@@ -38,7 +39,9 @@ def _game_command(message: ClientCommand, player_id: str):
         case _: raise ValueError("Unsupported command action.")
 
 
-def _fingerprint(message: ClientCommand) -> str:
+def _legacy_wire_fingerprint(message: ClientCommand) -> str:
+    """Recognize receipts written by the first, short-lived v1 coordinator."""
+
     raw = json.dumps(message.action.model_dump(mode="json"), sort_keys=True, separators=(",", ":"))
     return sha256(raw.encode("utf-8")).hexdigest()
 
@@ -56,7 +59,9 @@ class RoomCoordinator:
             return await self._dispatch_locked(room_code, guest.player_id, message)
 
     async def _dispatch_locked(self, room_code: str, player_id: str, message: ClientCommand) -> ServerAcknowledgment | ServerError:
-        fingerprint = _fingerprint(message)
+        command = _game_command(message, player_id)
+        fingerprint = command_fingerprint(command)
+        legacy_fingerprint = _legacy_wire_fingerprint(message)
         for _ in range(8):
             stored = await self._repository.load_room(room_code)
             now = datetime.now(timezone.utc)
@@ -64,15 +69,28 @@ class RoomCoordinator:
                 return ServerError(code="ROOM_UNAVAILABLE", message="Room is unavailable.", request_id=message.request_id)
             if not any(player.player_id == player_id and player.connection.value != "departed" for player in stored.state.players):
                 return ServerError(code="SESSION_INVALID", message="Guest session is invalid.", request_id=message.request_id)
-            for item in stored.receipts:
-                if item.player_id == player_id and item.request_id == message.request_id:
-                    if item.fingerprint != fingerprint:
+            durable_receipt = await self._repository.load_command_receipt(
+                room_code, player_id, message.request_id
+            )
+            candidates = (
+                (durable_receipt, *stored.receipts)
+                if durable_receipt is not None else stored.receipts
+            )
+            for item in candidates:
+                if (
+                    item.player_id == player_id
+                    and item.request_id == message.request_id
+                    and (
+                        item is durable_receipt
+                        or durable_receipt_is_live(item.recorded_at, now)
+                    )
+                ):
+                    if item.fingerprint not in (fingerprint, legacy_fingerprint):
                         return ServerError(code="DUPLICATE_REQUEST", message="Request ID was used for a different action.", request_id=message.request_id)
                     if item.accepted:
                         return ServerAcknowledgment(request_id=message.request_id, sequence=item.sequence)
                     return ServerError(code=item.code or "COMMAND_REJECTED", message=item.message or "Command rejected.", request_id=message.request_id)
 
-            command = _game_command(message, player_id)
             # These actions require a durable scheduler, collaborative editor,
             # or credential revocation that has not been connected yet.
             unavailable = isinstance(command, (StartMatch, CallEmergencyMeeting, RequestOfficialTestRun, LeaveRoom))

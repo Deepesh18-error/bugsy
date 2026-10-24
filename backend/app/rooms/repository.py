@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+import re
 from typing import Protocol
 
 from app.game.models import RoomState
@@ -32,6 +33,39 @@ class CommandReceipt:
     message: str | None
     recorded_at: datetime
 
+    def __post_init__(self) -> None:
+        if (
+            not isinstance(self.player_id, str) or not self.player_id
+            or not isinstance(self.request_id, str) or not self.request_id
+        ):
+            raise ValueError("Receipt player and request IDs are required.")
+        if len(self.player_id) > 128 or re.fullmatch(r"[A-Za-z0-9_-]{1,128}", self.request_id) is None:
+            raise ValueError("Receipt identity is invalid.")
+        if not isinstance(self.fingerprint, str) or re.fullmatch(r"[0-9a-f]{64}", self.fingerprint) is None:
+            raise ValueError("Receipt fingerprint must be a SHA-256 hex digest.")
+        if type(self.sequence) is not int or self.sequence < 0:
+            raise ValueError("Receipt sequence must be non-negative.")
+        if type(self.accepted) is not bool:
+            raise ValueError("Receipt acceptance must be a boolean.")
+        if self.accepted and (self.code is not None or self.message is not None):
+            raise ValueError("Accepted receipts cannot contain an error.")
+        if not self.accepted and (
+            not isinstance(self.code, str) or not self.code
+            or not isinstance(self.message, str) or not self.message
+        ):
+            raise ValueError("Rejected receipts require an error code and message.")
+        if not self.accepted and (
+            re.fullmatch(r"[A-Za-z0-9._-]{1,128}", self.code) is None
+            or len(self.message) > 160
+        ):
+            raise ValueError("Rejected receipt error is invalid.")
+        if (
+            not isinstance(self.recorded_at, datetime)
+            or self.recorded_at.tzinfo is None
+            or self.recorded_at.utcoffset() != timedelta(0)
+        ):
+            raise ValueError("Receipt time must be UTC.")
+
 
 @dataclass(frozen=True, slots=True)
 class GuestSession:
@@ -53,6 +87,10 @@ class RoomRepository(Protocol):
     async def load_room(self, room_code: str) -> StoredRoom | None: ...
 
     async def load_session(self, credential_hash: str) -> GuestSession | None: ...
+
+    async def load_command_receipt(
+        self, room_code: str, player_id: str, request_id: str
+    ) -> CommandReceipt | None: ...
 
     async def compare_and_swap(
         self,

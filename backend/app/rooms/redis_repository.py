@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import json
 import math
-from datetime import datetime, timedelta, timezone
+from dataclasses import asdict
+from datetime import datetime, timezone
+from hashlib import sha256
 
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
 
 from app.game.models import RoomState
+from app.game.idempotency import DEFAULT_REQUEST_ID_TTL_SECONDS, durable_receipt_is_live
 from app.rooms.repository import CommandReceipt, GuestSession, RoomStorageError, StoredRoom
 from app.rooms.serialization import deserialize_metadata, deserialize_room, serialize_room
 
@@ -33,12 +36,18 @@ end
 if ARGV[7] == '1' and redis.call('EXISTS', KEYS[3]) == 0 then
     return 0
 end
+if ARGV[8] == '1' and redis.call('EXISTS', KEYS[4]) == 1 then
+    return 0
+end
 redis.call('SET', KEYS[1], ARGV[2], 'EXAT', tonumber(ARGV[4]))
 if ARGV[6] == '1' then
     redis.call('SET', KEYS[2], ARGV[3], 'EXAT', tonumber(ARGV[5]))
 end
 if ARGV[7] == '1' then
     redis.call('DEL', KEYS[3])
+end
+if ARGV[8] == '1' then
+    redis.call('SET', KEYS[4], ARGV[9], 'EX', tonumber(ARGV[10]))
 end
 return 1
 """
@@ -62,6 +71,18 @@ def _room_key(code: str) -> str:
 
 def _session_key(credential_hash: str) -> str:
     return f"codemafia:v1:guest:{credential_hash}"
+
+
+def _receipt_key(room_code: str, player_id: str, request_id: str) -> str:
+    identity = f"{room_code}\0{player_id}\0{request_id}".encode("utf-8")
+    return f"codemafia:v1:receipt:{sha256(identity).hexdigest()}"
+
+
+def _receipt_value(receipt: CommandReceipt) -> bytes:
+    return json.dumps(
+        asdict(receipt), default=lambda value: value.isoformat(),
+        sort_keys=True, separators=(",", ":"),
+    ).encode("utf-8")
 
 
 def _session_value(session: GuestSession) -> bytes:
@@ -130,6 +151,29 @@ class RedisRoomRepository:
         except (ValueError, TypeError, KeyError) as exc:
             raise RoomStorageError("Stored guest session is invalid.") from exc
 
+    async def load_command_receipt(
+        self, room_code: str, player_id: str, request_id: str
+    ) -> CommandReceipt | None:
+        try:
+            raw = await self._client.get(_receipt_key(room_code, player_id, request_id))
+        except RedisError as exc:
+            raise RoomStorageError("Room storage is unavailable.") from exc
+        if raw is None:
+            return None
+        try:
+            value = json.loads(raw)
+            receipt = CommandReceipt(
+                player_id=value["player_id"], request_id=value["request_id"],
+                fingerprint=value["fingerprint"], sequence=value["sequence"],
+                accepted=value["accepted"], code=value["code"],
+                message=value["message"], recorded_at=datetime.fromisoformat(value["recorded_at"]),
+            )
+            if receipt.player_id != player_id or receipt.request_id != request_id:
+                raise ValueError("Receipt identity mismatch.")
+            return receipt
+        except (ValueError, TypeError, KeyError) as exc:
+            raise RoomStorageError("Stored command receipt is invalid.") from exc
+
     async def compare_and_swap(
         self,
         previous: StoredRoom,
@@ -149,17 +193,24 @@ class RedisRoomRepository:
         sequence = previous.sequence + (1 if updated != previous.state or advance_sequence else 0)
         if receipt is not None and receipt.sequence != sequence:
             raise ValueError("Receipt sequence must match the committed room sequence.")
-        cutoff = datetime.now(timezone.utc) - timedelta(minutes=10)
-        receipts = tuple(item for item in previous.receipts if item.recorded_at >= cutoff)
-        if receipt is not None:
-            receipts = (*receipts[-1023:], receipt)
+        now = datetime.now(timezone.utc)
+        # Preserve only legacy embedded receipts until their original window ends.
+        receipts = tuple(
+            item for item in previous.receipts
+            if durable_receipt_is_live(item.recorded_at, now)
+        )
+        receipt_key = (
+            _receipt_key(updated.room_code, receipt.player_id, receipt.request_id)
+            if receipt is not None else "codemafia:v1:unused:receipt"
+        )
         try:
             result = await self._client.eval(
                 _COMPARE_AND_SWAP,
-                3,
+                4,
                 _room_key(updated.room_code),
                 new_key,
                 old_key,
+                receipt_key,
                 previous.raw,
                 serialize_room(updated, sequence=sequence, receipts=receipts),
                 _session_value(new_session) if new_session else b"",
@@ -167,6 +218,9 @@ class RedisRoomRepository:
                 _expiry_second(new_session.expires_at) if new_session else 0,
                 "1" if new_session else "0",
                 "1" if revoke_credential_hash else "0",
+                "1" if receipt else "0",
+                _receipt_value(receipt) if receipt else b"",
+                DEFAULT_REQUEST_ID_TTL_SECONDS,
             )
             return result == 1
         except RedisError as exc:

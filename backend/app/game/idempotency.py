@@ -1,9 +1,8 @@
 """Bounded request-ID deduplication for retry-safe game commands.
 
-The in-memory store is suitable for the current single-process domain phase.
-The later room coordinator must use a shared durable store (such as Redis) and
-commit deduplication records atomically with room-state changes before running
-multiple API workers.
+The in-memory store supports isolated game-rule simulations. The WebSocket
+coordinator uses the same fingerprint and expiry policy with Redis receipts
+that are committed atomically alongside the room state.
 """
 
 from __future__ import annotations
@@ -13,7 +12,7 @@ from dataclasses import asdict, dataclass, is_dataclass
 from hashlib import sha256
 import json
 import math
-from datetime import datetime
+from datetime import datetime, timedelta
 from threading import Condition
 from time import monotonic
 from typing import Callable
@@ -29,6 +28,8 @@ from .outcomes import (
 
 DEFAULT_REQUEST_ID_TTL_SECONDS = 10 * 60
 DEFAULT_MAX_CACHED_REQUESTS = 10_000
+# Older room records may still carry embedded receipts during migration.
+MAX_LEGACY_EMBEDDED_RECEIPTS = 1_024
 
 
 @dataclass(frozen=True, slots=True)
@@ -46,7 +47,7 @@ class _CachedRequest:
     outcome: TransitionOutcome
 
 
-def _command_fingerprint(command: GameCommand) -> str:
+def command_fingerprint(command: GameCommand) -> str:
     """Hash command type and payload so reused IDs cannot change meaning."""
 
     if not is_dataclass(command):
@@ -64,8 +65,20 @@ def _command_fingerprint(command: GameCommand) -> str:
     return sha256(canonical).hexdigest()
 
 
+def durable_receipt_is_live(recorded_at: datetime, now: datetime) -> bool:
+    """Use UTC wall time for persisted receipts across process restarts."""
+
+    if recorded_at.tzinfo is None or now.tzinfo is None:
+        raise ValueError("Durable receipt times must be timezone-aware.")
+    return recorded_at <= now < recorded_at + timedelta(seconds=DEFAULT_REQUEST_ID_TTL_SECONDS)
+
+
+# Retain the original private helper for Phase 4 callers and tests.
+_command_fingerprint = command_fingerprint
+
+
 class RequestIdempotencyStore:
-    """Remember one outcome per room/player/request ID for a bounded period.
+    """In-memory helper for domain simulations and isolated callers.
 
     Policy: cache accepted and rejected outcomes for ten minutes by default,
     with a 10,000-entry cap. Under pressure, the oldest cached entry is evicted
@@ -125,7 +138,7 @@ class RequestIdempotencyStore:
             raise ValueError("monotonic_now must be finite")
 
         key = (state.room_code, command.player_id, command.request_id)
-        fingerprint = _command_fingerprint(command)
+        fingerprint = command_fingerprint(command)
 
         while True:
             with self._condition:
@@ -219,8 +232,9 @@ def apply_command_idempotently(
 ) -> IdempotentExecution:
     """Apply a player command through the retry store and transition engine.
 
-    A coordinator should inspect ``result.replayed``: replayed outcomes are
-    responses to a retry and must not be committed as a new room-state update.
+    The live WebSocket coordinator uses the shared fingerprint and expiry
+    helpers above with durable Redis receipts. This helper remains useful for
+    rule-level simulations and other in-memory callers.
     """
 
     # Import locally so the store's keying and caching primitives remain usable
