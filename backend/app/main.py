@@ -11,6 +11,7 @@ from redis.exceptions import RedisError
 
 from app.api.rooms import router as room_router
 from app.api.editor import router as editor_router
+from app.api.feedback import router as feedback_router
 from app.api.websocket import router as websocket_router
 from app.realtime.connection_manager import RoomConnectionManager
 from app.realtime.coordinator import RoomCoordinator
@@ -18,6 +19,10 @@ from app.realtime.deadline_scheduler import DeadlineScheduler
 from app.realtime.match_setup import MatchSetupPolicy
 from app.rooms.redis_repository import RedisRoomRepository
 from app.rooms.service import RoomPolicy, RoomService
+from app.runner.redis_repository import RedisRunnerRepository
+from app.runner.result_processor import RunnerResultProcessor
+from app.runner.result_worker import RunnerResultWorker
+from app.runner.service import RunnerService
 
 
 def _allowed_origins() -> tuple[str, ...]:
@@ -62,6 +67,7 @@ async def lifespan(app: FastAPI):
         "CODEMAFIA_EDITOR_WS_URL", "ws://127.0.0.1:1234/api/rooms/editor/ws",
     )
     repository = RedisRoomRepository(client)
+    runner_repository = RedisRunnerRepository(client)
     app.state.room_repository = repository
     app.state.room_service = RoomService(
         repository,
@@ -73,24 +79,50 @@ async def lifespan(app: FastAPI):
         ),
     )
     app.state.room_connection_manager = RoomConnectionManager(app.state.room_service.authenticate_player)
+    signing_key = os.getenv("CODEMAFIA_RUNNER_RESULT_HMAC_KEY", "")
+    if signing_key and len(signing_key.encode("utf-8")) < 32:
+        raise ValueError("CODEMAFIA_RUNNER_RESULT_HMAC_KEY must contain at least 32 bytes.")
+    app.state.runner_repository = runner_repository
+    app.state.runner_service = RunnerService(
+        repository, runner_repository, enabled=bool(signing_key),
+    )
     app.state.room_coordinator = RoomCoordinator(
         repository, app.state.room_connection_manager,
         setup_policy=MatchSetupPolicy(allow_draft_content=environment != "production"),
+        runner_service=app.state.runner_service,
     )
     deadline_stop = asyncio.Event()
     deadline_task: asyncio.Task[None] | None = None
+    result_stop = asyncio.Event()
+    result_task: asyncio.Task[None] | None = None
     try:
         await repository.rebuild_category_deadline_index()
         deadline_task = asyncio.create_task(
             DeadlineScheduler(repository, app.state.room_coordinator).run(deadline_stop),
             name="category-deadline-worker",
         )
+        if signing_key:
+            result_processor = RunnerResultProcessor(
+                repository,
+                runner_repository,
+                app.state.room_connection_manager,
+                signing_key=signing_key,
+                room_locks=app.state.room_coordinator.room_locks,
+            )
+            result_task = asyncio.create_task(
+                RunnerResultWorker(runner_repository, result_processor).run(result_stop),
+                name="runner-result-worker",
+            )
         yield
     finally:
         deadline_stop.set()
+        result_stop.set()
         try:
-            if deadline_task is not None:
-                await deadline_task
+            tasks = [task for task in (deadline_task, result_task) if task is not None]
+            for task in tasks:
+                task.cancel()
+            if tasks:
+                await asyncio.gather(*tasks, return_exceptions=True)
         finally:
             await app.state.room_connection_manager.close_all()
             await client.aclose()
@@ -106,6 +138,7 @@ app.add_middleware(
 )
 app.include_router(room_router)
 app.include_router(editor_router)
+app.include_router(feedback_router)
 app.include_router(websocket_router)
 
 

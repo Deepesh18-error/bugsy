@@ -36,6 +36,7 @@ from app.realtime.match_setup import (
     resolve_match_setup,
 )
 from app.realtime.snapshots import project_event
+from app.runner.service import RunnerQueueFull, RunnerService, RunnerUnavailable
 
 
 def _game_command(message: ClientCommand, player_id: str):
@@ -70,12 +71,20 @@ class RoomCoordinator:
         *,
         choice_source: ChoiceSource | None = None,
         setup_policy: MatchSetupPolicy | None = None,
+        runner_service: RunnerService | None = None,
     ) -> None:
         self._repository = repository
         self._connections = connections
         self._choices = choice_source or SecureChoiceSource()
         self._setup_policy = setup_policy or MatchSetupPolicy()
+        self._runner_service = runner_service
         self._locks: dict[str, asyncio.Lock] = {}
+
+    @property
+    def room_locks(self) -> dict[str, asyncio.Lock]:
+        """Expose the single-writer lock map to other in-process room workers."""
+
+        return self._locks
 
     async def dispatch(self, guest: AuthenticatedGuest, message: ClientCommand) -> ServerAcknowledgment | ServerError:
         room_code = guest.state.room_code
@@ -116,9 +125,10 @@ class RoomCoordinator:
                         return ServerAcknowledgment(request_id=message.request_id, sequence=item.sequence)
                     return ServerError(code=item.code or "COMMAND_REJECTED", message=item.message or "Command rejected.", request_id=message.request_id)
 
-            # Meeting timers, runner jobs, and WebSocket leave revocation are
-            # connected in later phases.
-            unavailable = isinstance(command, (CallEmergencyMeeting, RequestOfficialTestRun, LeaveRoom))
+            # Meeting timers and WebSocket leave revocation remain separate
+            # integrations; official test jobs are created below only after
+            # the domain transition accepts the authenticated request.
+            unavailable = isinstance(command, (CallEmergencyMeeting, LeaveRoom))
             if isinstance(command, StartMatch) and not available_categories(self._setup_policy):
                 result = ServerError(code="CHALLENGE_UNAVAILABLE", message="No challenge is ready for a live match.", request_id=message.request_id)
                 updated, events = stored.state, ()
@@ -148,6 +158,36 @@ class RoomCoordinator:
                 else:
                     outcome = apply_command(stored.state, command, now)
                 if (
+                    isinstance(command, RequestOfficialTestRun)
+                    and isinstance(outcome, TransitionAccepted)
+                ):
+                    if self._runner_service is None:
+                        outcome = None
+                        result = ServerError(
+                            code="RUNNER_UNAVAILABLE",
+                            message="Official tests are not available right now.",
+                            request_id=message.request_id,
+                        )
+                    else:
+                        try:
+                            await self._runner_service.enqueue_for_request(
+                                stored, command, now
+                            )
+                        except RunnerQueueFull:
+                            outcome = None
+                            result = ServerError(
+                                code="RUNNER_QUEUE_FULL",
+                                message="The official test queue is busy; please try again.",
+                                request_id=message.request_id,
+                            )
+                        except RunnerUnavailable:
+                            outcome = None
+                            result = ServerError(
+                                code="RUNNER_UNAVAILABLE",
+                                message="Official tests are unavailable; please try again.",
+                                request_id=message.request_id,
+                            )
+                if (
                     isinstance(command, CastCategoryVote)
                     and isinstance(outcome, TransitionAccepted)
                     and category_vote_is_complete(outcome.state)
@@ -170,10 +210,13 @@ class RoomCoordinator:
                         request_id=message.request_id,
                         sequence=stored.sequence + (1 if updated != stored.state or events else 0),
                     )
-                else:
+                elif outcome is not None:
                     updated = stored.state
                     events = ()
                     result = ServerError(code=outcome.code.value, message=outcome.message, request_id=message.request_id)
+                else:
+                    updated = stored.state
+                    events = ()
 
             sequence = result.sequence if isinstance(result, ServerAcknowledgment) else stored.sequence
             # Validate every event projection before committing an irreversible
