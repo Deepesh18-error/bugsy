@@ -8,6 +8,7 @@ export default function CategoryVoteScreen({
   result,
   onVote,
   onContinue,
+  canContinue = true,
   isLive = false,
   isSubmitting = false,
   isDisabled = false,
@@ -21,6 +22,9 @@ export default function CategoryVoteScreen({
   const winningCategory = result
     ? categories.find((category) => category.id === result.categoryId)
     : null;
+  const voteState = winningCategory
+    ? 'resolved'
+    : selectedCategory ? 'voted' : isSubmitting ? 'pending' : 'open';
 
   return (
     <main className={styles.page}>
@@ -47,11 +51,11 @@ export default function CategoryVoteScreen({
               Your crew will tackle challenges from one shared category. Cast
               your vote, then see where the group lands.
             </p>
-            {isLive && deadlineAt && (
+            {isLive && deadlineAt && voteState !== 'resolved' && (
               <p className={styles.description}>
-                Server vote deadline: <time dateTime={deadlineAt}>
+                Voting closes at <time dateTime={deadlineAt}>
                   {new Date(deadlineAt).toLocaleTimeString()}
-                </time>
+                </time> (server deadline).
               </p>
             )}
           </div>
@@ -86,7 +90,7 @@ export default function CategoryVoteScreen({
                       <span className={styles.categoryName}>{category.name}</span>
                       <span className={styles.categoryDescription}>{category.description}</span>
                     </span>
-                    {!isLive && (
+                    {(!isLive || voteState === 'resolved') && (
                       <span className={styles.voteCount}>
                         <strong>{voteCounts[category.id] ?? 0}</strong>
                         <span>{(voteCounts[category.id] ?? 0) === 1 ? 'vote' : 'votes'}</span>
@@ -106,9 +110,15 @@ export default function CategoryVoteScreen({
                   <div>
                     <strong>{winningCategory.name} is selected for this match.</strong>
                     <p>
-                      {result.wasTie
-                        ? 'The preview used a repeatable room-code tie-break. The server will resolve real votes.'
-                        : 'Your vote is locked. The preview ballots are complete.'}
+                      {isLive
+                        ? !canContinue
+                          ? 'The category is final. Waiting for your private role snapshot.'
+                          : result.usedFallback
+                            ? 'The server resolved a tie or chose a category because no votes were cast.'
+                            : 'The server counted the final ballots. Your role is ready to reveal.'
+                        : result.wasTie
+                          ? 'The preview used a repeatable room-code tie-break. The server will resolve real votes.'
+                          : 'Your vote is locked. The preview ballots are complete.'}
                     </p>
                   </div>
                 </>
@@ -116,9 +126,11 @@ export default function CategoryVoteScreen({
                 <>
                   <span className={styles.statusIconWaiting} aria-hidden="true">↗</span>
                   <div>
-                    <strong>{selectedCategory
+                    <strong>{voteState === 'voted'
                       ? 'Vote recorded.'
-                      : isSubmitting ? 'Recording your vote…' : 'Your vote is still open.'}</strong>
+                      : status === 'error'
+                        ? 'Your vote needs attention.'
+                        : voteState === 'pending' ? 'Recording your vote…' : 'Your vote is still open.'}</strong>
                     <p>
                       {statusMessage || (selectedCategory
                         ? `${selectedCategory.name} is your choice. Waiting for the group vote to resolve.`
@@ -129,15 +141,17 @@ export default function CategoryVoteScreen({
               )}
             </div>
 
-            {result && winningCategory && !isLive && (
-              <button className={styles.continueButton} onClick={onContinue} type="button">
-                Reveal my role <span aria-hidden="true">→</span>
+            {result && winningCategory && (
+              <button className={styles.continueButton} disabled={!canContinue} onClick={onContinue} type="button">
+                {isLive ? 'View my private role' : 'Reveal my role'} <span aria-hidden="true">→</span>
               </button>
             )}
 
             {isLive ? (
-              <p className={styles.previewNote} role={status === 'error' ? 'alert' : 'status'}>
-                Votes are private until the server selects a category. Refreshing keeps your recorded ballot.
+              <p className={styles.previewNote}>
+                {voteState === 'resolved'
+                  ? 'Final vote totals came from the server. Individual ballots remain private.'
+                  : 'Individual ballots remain private. Your saved vote will reappear after refresh.'}
               </p>
             ) : (
               <p className={styles.previewNote}>

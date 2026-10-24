@@ -35,8 +35,10 @@ export default function RoleRevealScreen({
   isLive = false,
   deadlineAt = null,
 }) {
-  const roleDetails = ROLE_DETAILS[role] ?? ROLE_DETAILS.civilian;
-  const roleStyle = role === 'impostor' ? styles.impostor : styles.civilian;
+  const roleDetails = Object.hasOwn(ROLE_DETAILS, role) ? ROLE_DETAILS[role] : null;
+  const roleStyle = roleDetails
+    ? role === 'impostor' ? styles.impostor : styles.civilian
+    : styles.pending;
 
   return (
     <main className={`${styles.page} ${roleStyle}`}>
@@ -55,45 +57,60 @@ export default function RoleRevealScreen({
         <section className={styles.content} id="role-reveal">
           <p className={styles.privateNotice}>
             <span aria-hidden="true">▣</span>
-            PRIVATE ROLE · ONLY YOU SHOULD SEE THIS
+            {roleDetails ? 'PRIVATE ROLE · ONLY YOU SHOULD SEE THIS' : 'PRIVATE ROLE · WAITING FOR SERVER'}
           </p>
 
           <section className={styles.roleCard} aria-labelledby="role-title">
-            <div className={styles.roleSymbol} aria-hidden="true">
-              {roleDetails.symbol}
-            </div>
-            <p className={styles.revealLabel}>Your role, {displayName}</p>
-            <p className={styles.roleName}>{roleDetails.label}</p>
-            <h1 id="role-title">{roleDetails.headline}</h1>
-            <p className={styles.description}>{roleDetails.description}</p>
+            {roleDetails ? (
+              <>
+                <div className={styles.roleSymbol} aria-hidden="true">
+                  {roleDetails.symbol}
+                </div>
+                <p className={styles.revealLabel}>Your role, {displayName}</p>
+                <p className={styles.roleName}>{roleDetails.label}</p>
+                <h1 id="role-title">{roleDetails.headline}</h1>
+                <p className={styles.description}>{roleDetails.description}</p>
 
-            <div className={styles.divider} />
+                <div className={styles.divider} />
 
-            <div className={styles.assignment}>
-              <span className={styles.assignmentIcon} aria-hidden="true">
-                {role === 'impostor' ? '!' : '⌘'}
-              </span>
-              <div>
-                <h2>{roleDetails.objectiveTitle}</h2>
-                <p>{roleDetails.objective}</p>
+                <div className={styles.assignment}>
+                  <span className={styles.assignmentIcon} aria-hidden="true">
+                    {role === 'impostor' ? '!' : '⌘'}
+                  </span>
+                  <div>
+                    <h2>{roleDetails.objectiveTitle}</h2>
+                    <p>{isLive && role === 'impostor'
+                      ? 'Your private sabotage objective will appear when the coding round begins.'
+                      : roleDetails.objective}</p>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div role="status" aria-live="polite">
+                <div className={styles.roleSymbol} aria-hidden="true">…</div>
+                <p className={styles.revealLabel}>{displayName}, your role is private</p>
+                <h1 id="role-title">Waiting for your role.</h1>
+                <p className={styles.description}>
+                  Your private role has not appeared in the authorized room snapshot yet. We will show it when the server sends it.
+                </p>
               </div>
-            </div>
+            )}
 
-            <div className={styles.matchDetails}>
+            {roleDetails && <div className={styles.matchDetails}>
               <span>THIS MATCH</span>
               <strong>{category}</strong>
-            </div>
+            </div>}
 
-            {!isLive && (
+            {!isLive && roleDetails && (
               <button className={styles.continueButton} onClick={onContinue} type="button">
                 Continue to coding round <span aria-hidden="true">→</span>
               </button>
             )}
-            <p className={styles.nextStep} aria-live="polite">
+            {roleDetails && <p className={styles.nextStep} aria-live="polite">
               {isLive
                 ? `Keep this role private. Waiting for the server to start the coding round${deadlineAt ? `. Role reveal deadline: ${new Date(deadlineAt).toLocaleTimeString()}` : ''}.`
                 : message || 'Keep this role private as you work through the challenge.'}
-            </p>
+            </p>}
           </section>
 
           {!isLive && (

@@ -11,6 +11,9 @@ export function roomWebSocketUrl() {
 
 export const ROOM_CODE_LENGTH = 8;
 export const ROOM_CODE_CHARACTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+export const SERVER_CATEGORY_IDS = Object.freeze([
+  'data-structures-algorithms', 'object-oriented', 'security', 'front-end', 'back-end',
+]);
 
 export class RoomApiError extends Error {
   constructor(code, message) {
@@ -26,28 +29,52 @@ export class RoomApiError extends Error {
  * never infers them from the room code or other players' public data.
  */
 export function requireRoomSnapshot(snapshot) {
-  const validPhase = [
+  const validPhase = new Set([
     'lobby', 'category_vote', 'role_reveal', 'coding_round',
     'meeting_discussion', 'player_vote', 'round_result', 'game_over',
-  ];
+  ]);
   const isRecord = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
+  const hasOnlyKeys = (value, keys) => Object.keys(value).every((key) => keys.includes(key));
+  const isUtcTime = (value) => typeof value === 'string'
+    && /(Z|\+00:00)$/.test(value) && Number.isFinite(Date.parse(value));
+  const isCategory = (value) => value === null || SERVER_CATEGORY_IDS.includes(value);
+  const snapshotKeys = [
+    'room_code', 'phase', 'capacity', 'expires_at', 'phase_deadline_at',
+    'self_player_id', 'own_category_vote_id', 'own_role', 'own_objectives',
+    'selected_category_id', 'round_number', 'challenge_id', 'challenge_version', 'players',
+  ];
+  const playerKeys = ['player_id', 'display_name', 'connection', 'is_ready', 'is_alive', 'is_host'];
+  const objectiveKeys = ['objective_id', 'status'];
   if (!isRecord(snapshot)
-    || typeof snapshot.room_code !== 'string'
-    || !validPhase.includes(snapshot.phase)
-    || !Number.isInteger(snapshot.capacity)
-    || typeof snapshot.self_player_id !== 'string'
-    || (snapshot.phase_deadline_at !== null && typeof snapshot.phase_deadline_at !== 'string')
-    || (snapshot.own_category_vote_id !== null && typeof snapshot.own_category_vote_id !== 'string')
+    || !hasOnlyKeys(snapshot, snapshotKeys)
+    || typeof snapshot.room_code !== 'string' || !snapshot.room_code
+    || !validPhase.has(snapshot.phase)
+    || ![4, 5].includes(snapshot.capacity)
+    || !isUtcTime(snapshot.expires_at)
+    || (snapshot.phase_deadline_at !== null && !isUtcTime(snapshot.phase_deadline_at))
+    || typeof snapshot.self_player_id !== 'string' || !snapshot.self_player_id
+    || !isCategory(snapshot.own_category_vote_id)
     || (snapshot.own_role !== null && !['civilian', 'impostor'].includes(snapshot.own_role))
-    || (snapshot.selected_category_id !== null && typeof snapshot.selected_category_id !== 'string')
+    || !isCategory(snapshot.selected_category_id)
+    || (snapshot.round_number !== null && (!Number.isInteger(snapshot.round_number)
+      || snapshot.round_number < 0 || snapshot.round_number > 4))
+    || (snapshot.challenge_id !== null && typeof snapshot.challenge_id !== 'string')
+    || (snapshot.challenge_version !== null && typeof snapshot.challenge_version !== 'string')
+    || !Array.isArray(snapshot.own_objectives)
+    || !snapshot.own_objectives.every((objective) => isRecord(objective)
+      && hasOnlyKeys(objective, objectiveKeys)
+      && typeof objective.objective_id === 'string'
+      && ['not_started', 'in_progress', 'completed'].includes(objective.status))
     || !Array.isArray(snapshot.players)
     || !snapshot.players.every((player) => isRecord(player)
+      && hasOnlyKeys(player, playerKeys)
       && typeof player.player_id === 'string'
       && typeof player.display_name === 'string'
       && ['connected', 'disconnected', 'departed'].includes(player.connection)
       && typeof player.is_ready === 'boolean'
       && typeof player.is_alive === 'boolean'
-      && typeof player.is_host === 'boolean')) {
+      && typeof player.is_host === 'boolean')
+    || !snapshot.players.some((player) => player.player_id === snapshot.self_player_id)) {
     throw new RoomApiError('INVALID_RESPONSE', 'The room server returned an incompatible room snapshot.');
   }
   return snapshot;

@@ -26,7 +26,7 @@ export default function PlayerCard({
         </span>
         {variant === 'lobby' && (
           <span className={styles.meta}>
-            {player.isHost ? 'Room host' : connectionLabel}
+            {player.isHost ? `Room host · ${connectionLabel}` : connectionLabel}
             {player.isDemo && ' · sample player'}
           </span>
         )}

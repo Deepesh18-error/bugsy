@@ -1,4 +1,4 @@
-import { requireRoomSnapshot } from './rooms.js';
+import { requireRoomSnapshot, SERVER_CATEGORY_IDS } from './rooms.js';
 
 export const ROOM_PROTOCOL_VERSION = 1;
 
@@ -12,6 +12,36 @@ export class RoomProtocolError extends Error {
 const isRecord = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 const isSequence = (value) => Number.isSafeInteger(value) && value >= 0;
 const isRequestId = (value) => typeof value === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(value);
+const hasExactKeys = (value, keys) => isRecord(value)
+  && Object.keys(value).length === keys.length
+  && keys.every((key) => Object.hasOwn(value, key));
+const isPlayerId = (value) => typeof value === 'string' && value.length > 0 && value.length <= 128;
+const isCounts = (value) => isRecord(value)
+  && Object.entries(value).every(([categoryId, count]) => SERVER_CATEGORY_IDS.includes(categoryId)
+    && Number.isSafeInteger(count) && count >= 0);
+
+const eventPayloadChecks = {
+  MatchStarted: (payload) => hasExactKeys(payload, []),
+  PlayerReadinessChanged: (payload) => hasExactKeys(payload, ['player_id', 'is_ready'])
+    && isPlayerId(payload.player_id) && typeof payload.is_ready === 'boolean',
+  CategoryVoteRecorded: (payload) => hasExactKeys(payload, ['recorded'])
+    && payload.recorded === true,
+  CategorySelected: (payload) => hasExactKeys(payload, ['category_id', 'vote_counts', 'used_fallback'])
+    && SERVER_CATEGORY_IDS.includes(payload.category_id)
+    && isCounts(payload.vote_counts)
+    && typeof payload.used_fallback === 'boolean',
+  PlayerRoleAssigned: (payload) => hasExactKeys(payload, ['role'])
+    && ['civilian', 'impostor'].includes(payload.role),
+  PlayerDeparted: (payload) => hasExactKeys(payload, ['player_id'])
+    && isPlayerId(payload.player_id),
+  PlayerDisconnected: (payload) => hasExactKeys(payload, ['player_id'])
+    && isPlayerId(payload.player_id),
+  PlayerReconnected: (payload) => hasExactKeys(payload, ['player_id'])
+    && isPlayerId(payload.player_id),
+  HostTransferred: (payload) => hasExactKeys(payload, ['previous_host_player_id', 'new_host_player_id'])
+    && isPlayerId(payload.previous_host_player_id)
+    && isPlayerId(payload.new_host_player_id),
+};
 
 /** Decode only the server envelopes defined by websocket_schemas.py. */
 export function parseServerMessage(raw) {
@@ -40,7 +70,9 @@ export function parseServerMessage(raw) {
     case 'event':
       if (!isSequence(value.sequence) || value.sequence < 1
         || typeof value.name !== 'string' || !/^[A-Za-z0-9._-]{1,128}$/.test(value.name)
-        || !isRecord(value.payload)) {
+        || !isRecord(value.payload)
+        || (Object.hasOwn(eventPayloadChecks, value.name)
+          && !eventPayloadChecks[value.name](value.payload))) {
         throw new RoomProtocolError('The room event has an invalid envelope.');
       }
       return value;

@@ -11,6 +11,7 @@
 
 .civilian { --role-color: var(--color-mint); --role-glow: rgb(115 213 179 / 10%); }
 .impostor { --role-color: var(--color-coral); --role-glow: rgb(255 120 94 / 10%); }
+.pending { --role-color: var(--color-lime); --role-glow: rgb(201 240 108 / 7%); }
 
 .frame {
   width: min(100% - 64px, 1080px);

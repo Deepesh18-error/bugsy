@@ -9,18 +9,26 @@ import styles from '../styles/LobbyScreen.module.css';
 export default function LobbyScreen({
   room, message, messageStatus = 'info', isLive = false, isBusy = false,
   connectionStatus = 'idle', connectionError = '', hasSequenceGap = false,
+  lastEvent = null,
   onBack, onStart, onToggleReady,
 }) {
   const [copyMessage, setCopyMessage] = useState('');
   const currentPlayer = room.players.find((player) => player.id === room.currentPlayerId);
   const isHost = currentPlayer?.isHost ?? false;
-  const readyCount = room.players.filter((player) => player.ready).length;
-  const enoughPlayers = room.players.length >= PREVIEW_MATCH.minimumPlayers
-    && room.players.length <= room.capacity;
-  const everyoneReady = readyCount === room.players.length;
+  const connectedPlayers = room.players.filter((player) => player.isConnected !== false);
+  const readyCount = connectedPlayers.filter((player) => player.ready).length;
+  const enoughPlayers = connectedPlayers.length >= PREVIEW_MATCH.minimumPlayers
+    && connectedPlayers.length <= room.capacity;
+  const everyoneReady = connectedPlayers.length > 0 && readyCount === connectedPlayers.length;
   const isLobbyPhase = !isLive || room.phase === 'lobby';
-  const canStart = isLobbyPhase && isHost && enoughPlayers && everyoneReady;
-  const isConnected = !isLive || connectionStatus === 'connected';
+  const isConnected = !isLive || (connectionStatus === 'connected' && currentPlayer?.isConnected !== false);
+  const canStart = isLobbyPhase && isHost && enoughPlayers && everyoneReady && isConnected;
+  const host = room.players.find((player) => player.isHost);
+  const lifecycleNotice = lastEvent?.name === 'PlayerDeparted'
+    ? 'A player left the room. Their seat is available for someone else.'
+    : lastEvent?.name === 'HostTransferred'
+      ? 'Host rights changed. The player marked HOST can start when everyone is ready.'
+      : '';
   const connectionText = {
     idle: 'Waiting to connect to the room…',
     connecting: 'Connecting to the room…',
@@ -30,8 +38,9 @@ export default function LobbyScreen({
   }[connectionStatus] || 'Connecting to the room…';
 
   let startHint = 'All players are ready. The host can start the match.';
-  if (!isHost) startHint = 'Waiting for the host to start the match.';
-  else if (!enoughPlayers) startHint = `A match needs ${PREVIEW_MATCH.minimumPlayers}–${room.capacity} players.`;
+  if (!isConnected) startHint = 'Reconnect to the room before changing readiness or starting.';
+  else if (!isHost) startHint = `Waiting for ${host?.name ?? 'the host'} to start the match.`;
+  else if (!enoughPlayers) startHint = `A match needs ${PREVIEW_MATCH.minimumPlayers}–${room.capacity} connected players. ${connectedPlayers.length} connected now.`;
   else if (!everyoneReady) startHint = 'Everyone needs to be ready before the host starts.';
 
   async function handleCopyCode() {
@@ -64,7 +73,7 @@ export default function LobbyScreen({
             <h1>Your crew is<br /><span>getting together.</span></h1>
             <p className={styles.description}>
               {isLive
-                ? 'Share the code with your friends. This room and its members are stored by the server.'
+                ? `Share the code with your friends. ${host?.name ?? 'The host'} can start when at least ${PREVIEW_MATCH.minimumPlayers} players are connected and all connected players are ready.`
                 : 'Share the room code with your friends. Once everyone is ready, the host can kick off the investigation.'}
             </p>
 
@@ -84,9 +93,7 @@ export default function LobbyScreen({
             <div className={styles.lobbyNote}>
               <span className={styles.noteIcon} aria-hidden="true">i</span>
               <p>{isLive
-                ? room.phase === 'lobby'
-                  ? 'These are real room members. Ready changes are saved by the server; live match start is still in progress.'
-                  : `The server has moved this room to ${room.phase.replaceAll('_', ' ')}. The live match screens are still being connected.`
+                ? 'The server owns the lineup and ready states. Disconnected players keep their seat during reconnect grace, but do not count toward match start.'
                 : 'This is a local prototype. The other players shown here are sample profiles, not connected people.'}</p>
             </div>
           </div>
@@ -100,6 +107,11 @@ export default function LobbyScreen({
             {isLive && <StatusMessage className={styles.connectionStatus} status={connectionStatus === 'error' ? 'error' : connectionStatus === 'connected' && !hasSequenceGap ? 'success' : 'reconnecting'}>
               {connectionText}
             </StatusMessage>}
+            {isLive && lifecycleNotice && (
+              <StatusMessage className={styles.connectionStatus} status="info">
+                {lifecycleNotice}
+              </StatusMessage>
+            )}
 
             <ul aria-label="Players in this room" className={styles.playerList}>
               {room.players.map((player) => (
@@ -128,15 +140,15 @@ export default function LobbyScreen({
 
             <div className={styles.readySummary}>
               <span className={styles.readyMeter} aria-hidden="true">
-                <span style={{ width: `${(readyCount / room.players.length) * 100}%` }} />
+                <span style={{ width: `${connectedPlayers.length ? (readyCount / connectedPlayers.length) * 100 : 0}%` }} />
               </span>
-              <span>{readyCount} of {room.players.length} ready</span>
+              <span>{readyCount} of {connectedPlayers.length} connected ready</span>
             </div>
 
             <div className={styles.actions}>
               <Button
                 className={`${styles.readyButton} ${currentPlayer?.ready ? styles.readyButtonActive : ''}`}
-                disabled={isBusy || !isConnected || !isLobbyPhase}
+                disabled={isBusy || !isConnected || !isLobbyPhase || !currentPlayer}
                 onClick={onToggleReady}
                 aria-pressed={Boolean(currentPlayer?.ready)}
                 variant="unstyled"
@@ -147,9 +159,12 @@ export default function LobbyScreen({
                 Start match <span aria-hidden="true">→</span>
               </Button>
             </div>
-            <StatusMessage as="p" className={styles.startHint} icon="" status={message ? messageStatus : 'info'}>
-              {message || (isLive ? 'Players and ready states update automatically.' : startHint)}
+            <StatusMessage as="p" className={styles.startHint} icon="" status="info">
+              {startHint}
             </StatusMessage>
+            {message && <StatusMessage as="p" className={styles.startHint} status={messageStatus}>
+              {message}
+            </StatusMessage>}
           </Panel>
         </section>
 

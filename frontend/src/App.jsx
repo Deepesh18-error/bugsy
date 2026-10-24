@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createRoom, joinRoom, leaveRoom, resumeRoom, toLobbyView } from './api/rooms.js';
 import useRoomSocket from './hooks/useRoomSocket.js';
 import {
@@ -53,6 +53,7 @@ export default function App() {
   const [isCategorySubmitting, setIsCategorySubmitting] = useState(false);
   const [categoryVoteMessage, setCategoryVoteMessage] = useState('');
   const [categoryVoteMessageStatus, setCategoryVoteMessageStatus] = useState('info');
+  const [liveCategoryResult, setLiveCategoryResult] = useState(null);
   const [lobbyMessage, setLobbyMessage] = useState('');
   const [lobbyMessageStatus, setLobbyMessageStatus] = useState('info');
   const [categoryVotes, setCategoryVotes] = useState({});
@@ -68,6 +69,7 @@ export default function App() {
   const [matchSeed, setMatchSeed] = useState(0);
   const liveRoomCode = roomMode === 'live' ? room?.code : null;
   const liveSocket = useRoomSocket(liveRoomCode);
+  const previousLivePlayers = useRef(null);
   const liveRoomSnapshot = roomMode === 'live'
     ? (liveSocket.snapshot?.room_code === liveRoomCode
       ? liveSocket.snapshot
@@ -78,9 +80,56 @@ export default function App() {
 
   useEffect(() => {
     if (roomMode === 'live' && liveSocket.snapshot?.room_code === liveRoomCode) {
-      setRoom(toLobbyView(liveSocket.snapshot));
+      const nextRoom = toLobbyView(liveSocket.snapshot);
+      const previous = previousLivePlayers.current;
+      if (previous?.code === nextRoom.code && nextRoom.phase === 'lobby') {
+        const currentIds = new Set(nextRoom.players.map((player) => player.id));
+        const departed = previous.players.filter((player) => !currentIds.has(player.id));
+        const previousHostId = previous.players.find((player) => player.isHost)?.id;
+        const nextHost = nextRoom.players.find((player) => player.isHost);
+        if (departed.length) {
+          const hostChanged = previousHostId && nextHost && previousHostId !== nextHost.id;
+          setLobbyMessage(
+            `${departed.map((player) => player.name).join(', ')} left the room.`
+            + (hostChanged ? ` ${nextHost.name} is now the host.` : ''),
+          );
+          setLobbyMessageStatus('info');
+        } else if (previousHostId && nextHost && previousHostId !== nextHost.id) {
+          setLobbyMessage(`${nextHost.name} is now the host.`);
+          setLobbyMessageStatus('info');
+        }
+      }
+      previousLivePlayers.current = nextRoom;
+      setRoom(nextRoom);
     }
   }, [roomMode, liveRoomCode, liveSocket.snapshot]);
+
+  useEffect(() => {
+    if (roomMode !== 'live' || liveSocket.status !== 'connected'
+      || liveRoomSnapshot?.phase !== 'lobby') return undefined;
+    // HTTP joins and departures do not yet publish a room event. Refreshing
+    // the authorized snapshot keeps the lobby lineup accurate in this phase.
+    const interval = window.setInterval(() => liveSocket.requestSnapshot(), 5_000);
+    return () => window.clearInterval(interval);
+  }, [roomMode, liveRoomSnapshot?.phase, liveSocket.status, liveSocket.requestSnapshot]);
+
+  useEffect(() => {
+    if (roomMode !== 'live' || liveSocket.lastEvent?.name !== 'CategorySelected') return;
+    const payload = liveSocket.lastEvent.payload;
+    setLiveCategoryResult({
+      roomCode: liveRoomCode,
+      categoryId: payload.category_id,
+      voteCounts: payload.vote_counts,
+      usedFallback: payload.used_fallback,
+    });
+  }, [roomMode, liveRoomCode, liveSocket.lastEvent]);
+
+  useEffect(() => {
+    if (roomMode === 'live' && liveRoomSnapshot?.own_category_vote_id) {
+      setCategoryVoteMessage('Your vote is saved on the server. Waiting for the final result.');
+      setCategoryVoteMessageStatus('success');
+    }
+  }, [roomMode, liveRoomSnapshot?.own_category_vote_id]);
 
   useEffect(() => {
     let active = true;
@@ -117,6 +166,8 @@ export default function App() {
   function enterLobby(displayName, roomCode, isCreating) {
     setRoom(buildPreviewRoom(displayName, roomCode, isCreating));
     setRoomMode('preview');
+    setLiveCategoryResult(null);
+    previousLivePlayers.current = null;
     setLobbyMessage('');
     setLobbyMessageStatus('info');
     setScreen('lobby');
@@ -124,6 +175,8 @@ export default function App() {
 
   async function handleCreateRoom(displayName) {
     const snapshot = await createRoom(displayName);
+    setLiveCategoryResult(null);
+    previousLivePlayers.current = null;
     setRoom(toLobbyView(snapshot));
     setInitialLiveSnapshot(snapshot);
     setRoomMode('live');
@@ -135,6 +188,8 @@ export default function App() {
 
   async function handleJoinRoom(displayName, roomCode) {
     const snapshot = await joinRoom(displayName, roomCode);
+    setLiveCategoryResult(null);
+    previousLivePlayers.current = null;
     setRoom(toLobbyView(snapshot));
     setInitialLiveSnapshot(snapshot);
     setRoomMode('live');
@@ -174,6 +229,9 @@ export default function App() {
     setLobbyMessageStatus('loading');
     try {
       await liveSocket.sendCommand({ name: 'start_match' });
+      setLiveCategoryResult(null);
+      setCategoryVoteMessage('');
+      setCategoryVoteMessageStatus('info');
       liveSocket.requestSnapshot();
       setLobbyMessage('The match is starting.');
       setLobbyMessageStatus('success');
@@ -444,6 +502,8 @@ export default function App() {
     setRoom(null);
     setRoomMode(null);
     setInitialLiveSnapshot(null);
+    setLiveCategoryResult(null);
+    previousLivePlayers.current = null;
     setLobbyMessage('');
     setLobbyMessageStatus('info');
     setCategoryVotes({});
@@ -483,19 +543,22 @@ export default function App() {
 
   if (roomMode === 'live' && room) {
     const phase = liveRoomSnapshot?.phase ?? room.phase;
+    const liveResult = liveCategoryResult?.roomCode === room.code ? liveCategoryResult : null;
     const liveSelectedCategory = LIVE_CATEGORIES.find(
       (category) => category.id === liveRoomSnapshot?.selected_category_id,
     );
 
-    if (phase === 'category_vote') {
+    if (phase === 'category_vote' || (phase === 'role_reveal' && liveResult)) {
       return (
         <CategoryVoteScreen
           categories={LIVE_CATEGORIES}
           roomCode={room.code}
-          voteCounts={{}}
+          voteCounts={liveResult?.voteCounts ?? {}}
           selectedCategoryId={liveRoomSnapshot?.own_category_vote_id ?? null}
-          result={null}
+          result={liveResult}
           onVote={handleLiveCategoryVote}
+          onContinue={() => setLiveCategoryResult(null)}
+          canContinue={phase === 'role_reveal' && Boolean(liveRoomSnapshot?.own_role)}
           isLive
           isSubmitting={isCategorySubmitting}
           isDisabled={liveSocket.status !== 'connected'}
@@ -510,17 +573,14 @@ export default function App() {
 
     if (phase === 'role_reveal') {
       const currentPlayer = room.players.find((player) => player.id === room.currentPlayerId);
-      if (!liveRoomSnapshot?.own_role) {
-        return <StatusMessage status="loading">Loading your private role…</StatusMessage>;
-      }
       return (
         <RoleRevealScreen
           displayName={currentPlayer?.name ?? 'Player'}
-          role={liveRoomSnapshot.own_role}
+          role={liveRoomSnapshot?.own_role ?? null}
           category={liveSelectedCategory?.name ?? 'Selected category'}
           roomCode={room.code}
           isLive
-          deadlineAt={liveRoomSnapshot.phase_deadline_at}
+          deadlineAt={liveRoomSnapshot?.phase_deadline_at}
         />
       );
     }
@@ -546,6 +606,7 @@ export default function App() {
         connectionStatus={liveSocket.status}
         connectionError={liveSocket.error}
         hasSequenceGap={liveSocket.hasSequenceGap}
+        lastEvent={liveSocket.lastEvent}
         onBack={handleLeaveLobby}
         onStart={handleLiveStartMatch}
         onToggleReady={handleLiveToggleReady}
