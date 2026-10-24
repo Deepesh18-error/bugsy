@@ -7,18 +7,29 @@ from datetime import datetime, timezone
 from hashlib import sha256
 import json
 
-from app.api.websocket_schemas import ClientCommand, ServerAcknowledgment, ServerError
+from app.api.websocket_schemas import (
+    ClientCommand, ServerAcknowledgment, ServerError, ServerEvent,
+)
 from app.game.commands import (
     CallEmergencyMeeting, CastCategoryVote, CastPlayerVote, EndRoom,
     LeaveRoom, RequestOfficialTestRun, RequestRematch, SendChatMessage,
     SetReady, StartMatch,
 )
 from app.game.idempotency import command_fingerprint, durable_receipt_is_live
+from app.game.models import DeadlineKind, GamePhase
 from app.game.outcomes import TransitionAccepted
+from app.game.randomness import ChoiceSource, SecureChoiceSource
 from app.game.transitions import apply_command
 from app.rooms.repository import CommandReceipt, RoomRepository
 from app.rooms.service import AuthenticatedGuest
 from app.realtime.connection_manager import RoomConnectionManager
+from app.realtime.deadline_scheduler import DeadlineAttempt
+from app.realtime.match_setup import (
+    MatchSetupPolicy,
+    category_vote_is_complete,
+    make_phase_deadline,
+    resolve_match_setup,
+)
 from app.realtime.snapshots import project_event
 
 
@@ -47,9 +58,18 @@ def _legacy_wire_fingerprint(message: ClientCommand) -> str:
 
 
 class RoomCoordinator:
-    def __init__(self, repository: RoomRepository, connections: RoomConnectionManager) -> None:
+    def __init__(
+        self,
+        repository: RoomRepository,
+        connections: RoomConnectionManager,
+        *,
+        choice_source: ChoiceSource | None = None,
+        setup_policy: MatchSetupPolicy | None = None,
+    ) -> None:
         self._repository = repository
         self._connections = connections
+        self._choices = choice_source or SecureChoiceSource()
+        self._setup_policy = setup_policy or MatchSetupPolicy()
         self._locks: dict[str, asyncio.Lock] = {}
 
     async def dispatch(self, guest: AuthenticatedGuest, message: ClientCommand) -> ServerAcknowledgment | ServerError:
@@ -91,9 +111,10 @@ class RoomCoordinator:
                         return ServerAcknowledgment(request_id=message.request_id, sequence=item.sequence)
                     return ServerError(code=item.code or "COMMAND_REJECTED", message=item.message or "Command rejected.", request_id=message.request_id)
 
-            # These actions require a durable scheduler, collaborative editor,
-            # or credential revocation that has not been connected yet.
-            unavailable = isinstance(command, (StartMatch, CallEmergencyMeeting, RequestOfficialTestRun, LeaveRoom))
+            # Meeting timers, runner jobs, and WebSocket leave revocation are
+            # connected in later phases. Match start and category voting are
+            # now handled here using the engine's existing transitions.
+            unavailable = isinstance(command, (CallEmergencyMeeting, RequestOfficialTestRun, LeaveRoom))
             if unavailable:
                 result: ServerAcknowledgment | ServerError = ServerError(
                     code="COMMAND_UNAVAILABLE",
@@ -103,7 +124,35 @@ class RoomCoordinator:
                 updated = stored.state
                 events = ()
             else:
-                outcome = apply_command(stored.state, command, now)
+                if isinstance(command, StartMatch):
+                    outcome = apply_command(
+                        stored.state,
+                        command,
+                        now,
+                        next_deadline=make_phase_deadline(
+                            DeadlineKind.CATEGORY_VOTE,
+                            now,
+                            self._setup_policy.category_vote_seconds,
+                        ),
+                    )
+                else:
+                    outcome = apply_command(stored.state, command, now)
+                if (
+                    isinstance(command, CastCategoryVote)
+                    and isinstance(outcome, TransitionAccepted)
+                    and category_vote_is_complete(outcome.state)
+                ):
+                    resolved = resolve_match_setup(
+                        outcome.state,
+                        now,
+                        choices=self._choices,
+                        policy=self._setup_policy,
+                    )
+                    if isinstance(resolved, TransitionAccepted):
+                        outcome = TransitionAccepted(
+                            state=resolved.state,
+                            events=(*outcome.events, *resolved.events),
+                        )
                 if isinstance(outcome, TransitionAccepted):
                     updated = outcome.state
                     events = outcome.events
@@ -133,10 +182,64 @@ class RoomCoordinator:
             ):
                 continue
             # Persistence is complete before any event or acknowledgment.
-            for recipient, event in projected:
-                if recipient is None:
-                    await self._connections.broadcast(room_code, event)
-                else:
-                    await self._connections.send_private(room_code, recipient, event)
+            await self._publish(room_code, projected)
             return result
         return ServerError(code="ROOM_BUSY", message="Room changed; please retry.", request_id=message.request_id)
+
+    async def resolve_category_deadline(
+        self, room_code: str, deadline_id: str
+    ) -> DeadlineAttempt:
+        """Resolve one persisted vote deadline; stale callbacks have no effect."""
+
+        lock = self._locks.setdefault(room_code, asyncio.Lock())
+        async with lock:
+            for _ in range(8):
+                stored = await self._repository.load_room(room_code)
+                now = datetime.now(timezone.utc)
+                if stored is None or stored.state.is_closed or now >= stored.state.expires_at:
+                    return DeadlineAttempt.STALE
+                deadline = stored.state.phase_deadline
+                if (
+                    stored.state.phase is not GamePhase.CATEGORY_VOTE
+                    or deadline is None
+                    or deadline.kind is not DeadlineKind.CATEGORY_VOTE
+                    or deadline.deadline_id != deadline_id
+                ):
+                    return DeadlineAttempt.STALE
+                if now < deadline.due_at:
+                    return DeadlineAttempt.NOT_DUE
+
+                outcome = resolve_match_setup(
+                    stored.state,
+                    now,
+                    choices=self._choices,
+                    policy=self._setup_policy,
+                )
+                if not isinstance(outcome, TransitionAccepted):
+                    # Keep the durable entry for investigation/retry; do not
+                    # silently delete a vote whose transition was rejected.
+                    return DeadlineAttempt.RETRY
+                sequence = stored.sequence + 1
+                projected = tuple(project_event(event, sequence) for event in outcome.events)
+                if not await self._repository.compare_and_swap(
+                    stored,
+                    outcome.state,
+                    advance_sequence=True,
+                ):
+                    continue
+                await self._publish(room_code, projected)
+                return DeadlineAttempt.COMMITTED
+            return DeadlineAttempt.RETRY
+
+    async def _publish(
+        self,
+        room_code: str,
+        projected: tuple[tuple[str | None, ServerEvent], ...],
+    ) -> None:
+        """Send only allowlisted event projections after the room commit."""
+
+        for recipient, event in projected:
+            if recipient is None:
+                await self._connections.broadcast(room_code, event)
+            else:
+                await self._connections.send_private(room_code, recipient, event)
