@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { createRoom, joinRoom, leaveRoom, resumeRoom, toLobbyView } from './api/rooms.js';
+import useRoomSocket from './hooks/useRoomSocket.js';
 import {
   buildPreviewPeerVotes,
   buildPreviewRoom,
@@ -38,6 +39,7 @@ export default function App() {
   const [restoreError, setRestoreError] = useState('');
   const [isLobbyBusy, setIsLobbyBusy] = useState(false);
   const [lobbyMessage, setLobbyMessage] = useState('');
+  const [lobbyMessageStatus, setLobbyMessageStatus] = useState('info');
   const [categoryVotes, setCategoryVotes] = useState({});
   const [myCategoryVote, setMyCategoryVote] = useState(null);
   const [categoryResult, setCategoryResult] = useState(null);
@@ -49,6 +51,14 @@ export default function App() {
   const [roundNumber, setRoundNumber] = useState(1);
   const [gameResult, setGameResult] = useState(null);
   const [matchSeed, setMatchSeed] = useState(0);
+  const liveRoomCode = roomMode === 'live' ? room?.code : null;
+  const liveSocket = useRoomSocket(liveRoomCode);
+
+  useEffect(() => {
+    if (roomMode === 'live' && liveSocket.snapshot?.room_code === liveRoomCode) {
+      setRoom(toLobbyView(liveSocket.snapshot));
+    }
+  }, [roomMode, liveRoomCode, liveSocket.snapshot]);
 
   useEffect(() => {
     let active = true;
@@ -84,6 +94,7 @@ export default function App() {
     setRoom(buildPreviewRoom(displayName, roomCode, isCreating));
     setRoomMode('preview');
     setLobbyMessage('');
+    setLobbyMessageStatus('info');
     setScreen('lobby');
   }
 
@@ -93,6 +104,7 @@ export default function App() {
     setRoomMode('live');
     setRestoreError('');
     setLobbyMessage('Room created. Share the code with friends.');
+    setLobbyMessageStatus('success');
     setScreen('lobby');
   }
 
@@ -102,6 +114,7 @@ export default function App() {
     setRoomMode('live');
     setRestoreError('');
     setLobbyMessage('You joined the room.');
+    setLobbyMessageStatus('success');
     setScreen('lobby');
   }
 
@@ -109,20 +122,40 @@ export default function App() {
     enterLobby(displayName, createRoomCode(), true);
   }
 
-  async function handleRefreshLobby() {
+  async function handleLiveToggleReady() {
+    const localPlayer = room?.players.find((player) => player.id === room.currentPlayerId);
+    if (!localPlayer || room.phase !== 'lobby' || liveSocket.status !== 'connected') return;
     setIsLobbyBusy(true);
-    setLobbyMessage('');
+    setLobbyMessage('Saving your ready status…');
+    setLobbyMessageStatus('loading');
     try {
-      const snapshot = await resumeRoom();
-      setRoom(toLobbyView(snapshot));
-      setLobbyMessage('Room membership refreshed.');
+      await liveSocket.sendCommand({ name: 'set_ready', ready: !localPlayer.ready });
+      liveSocket.requestSnapshot();
+      setLobbyMessage('Your ready status was saved.');
+      setLobbyMessageStatus('success');
     } catch (error) {
-      if (error.code === 'SESSION_INVALID') {
-        resetToWelcome();
-        setRestoreError('Your room session expired. Join again with the room code.');
-      } else {
-        setLobbyMessage(error.message);
-      }
+      setLobbyMessage(error.message || 'Could not update your ready status.');
+      setLobbyMessageStatus('error');
+    } finally {
+      setIsLobbyBusy(false);
+    }
+  }
+
+  async function handleLiveStartMatch() {
+    if (room?.phase !== 'lobby' || liveSocket.status !== 'connected') return;
+    setIsLobbyBusy(true);
+    setLobbyMessage('Asking the server to start the match…');
+    setLobbyMessageStatus('loading');
+    try {
+      await liveSocket.sendCommand({ name: 'start_match' });
+      liveSocket.requestSnapshot();
+      setLobbyMessage('The match is starting.');
+      setLobbyMessageStatus('success');
+    } catch (error) {
+      setLobbyMessage(error.code === 'COMMAND_UNAVAILABLE'
+        ? 'Live match start is still being connected on the server.'
+        : error.message || 'Could not start the match.');
+      setLobbyMessageStatus(error.code === 'COMMAND_UNAVAILABLE' ? 'warning' : 'error');
     } finally {
       setIsLobbyBusy(false);
     }
@@ -365,6 +398,7 @@ export default function App() {
     setRoom(null);
     setRoomMode(null);
     setLobbyMessage('');
+    setLobbyMessageStatus('info');
     setCategoryVotes({});
     setMyCategoryVote(null);
     setCategoryResult(null);
@@ -388,6 +422,7 @@ export default function App() {
       } catch (error) {
         if (error.code !== 'SESSION_INVALID') {
           setLobbyMessage(error.message);
+          setLobbyMessageStatus('error');
           setIsLobbyBusy(false);
           return;
         }
@@ -492,12 +527,15 @@ export default function App() {
       <LobbyScreen
         room={room} 
         message={lobbyMessage}
+        messageStatus={lobbyMessageStatus}
         isLive={roomMode === 'live'}
         isBusy={isLobbyBusy}
+        connectionStatus={liveSocket.status}
+        connectionError={liveSocket.error}
+        hasSequenceGap={liveSocket.hasSequenceGap}
         onBack={handleLeaveLobby}
-        onRefresh={handleRefreshLobby}
-        onStart={handleStartMatch}
-        onToggleReady={handleToggleReady}
+        onStart={roomMode === 'live' ? handleLiveStartMatch : handleStartMatch}
+        onToggleReady={roomMode === 'live' ? handleLiveToggleReady : handleToggleReady}
       />
     );
   }

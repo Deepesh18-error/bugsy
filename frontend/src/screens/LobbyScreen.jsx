@@ -6,7 +6,11 @@ import StatusMessage from '../components/StatusMessage.jsx';
 import { PREVIEW_MATCH } from '../data/mockMatch.js';
 import styles from '../styles/LobbyScreen.module.css';
 
-export default function LobbyScreen({ room, message, isLive = false, isBusy = false, onBack, onRefresh, onStart, onToggleReady }) {
+export default function LobbyScreen({
+  room, message, messageStatus = 'info', isLive = false, isBusy = false,
+  connectionStatus = 'idle', connectionError = '', hasSequenceGap = false,
+  onBack, onStart, onToggleReady,
+}) {
   const [copyMessage, setCopyMessage] = useState('');
   const currentPlayer = room.players.find((player) => player.id === room.currentPlayerId);
   const isHost = currentPlayer?.isHost ?? false;
@@ -14,7 +18,16 @@ export default function LobbyScreen({ room, message, isLive = false, isBusy = fa
   const enoughPlayers = room.players.length >= PREVIEW_MATCH.minimumPlayers
     && room.players.length <= room.capacity;
   const everyoneReady = readyCount === room.players.length;
-  const canStart = !isLive && isHost && enoughPlayers && everyoneReady;
+  const isLobbyPhase = !isLive || room.phase === 'lobby';
+  const canStart = isLobbyPhase && isHost && enoughPlayers && everyoneReady;
+  const isConnected = !isLive || connectionStatus === 'connected';
+  const connectionText = {
+    idle: 'Waiting to connect to the room…',
+    connecting: 'Connecting to the room…',
+    connected: hasSequenceGap ? 'Catching up with room updates…' : 'Connected. Room updates arrive automatically.',
+    reconnecting: 'Reconnecting to the room… Your actions will be available again shortly.',
+    error: connectionError || 'Room connection is unavailable.',
+  }[connectionStatus] || 'Connecting to the room…';
 
   let startHint = 'All players are ready. The host can start the match.';
   if (!isHost) startHint = 'Waiting for the host to start the match.';
@@ -71,7 +84,9 @@ export default function LobbyScreen({ room, message, isLive = false, isBusy = fa
             <div className={styles.lobbyNote}>
               <span className={styles.noteIcon} aria-hidden="true">i</span>
               <p>{isLive
-                ? 'These are real room members. Ready, start and live presence will be connected in the next multiplayer phase.'
+                ? room.phase === 'lobby'
+                  ? 'These are real room members. Ready changes are saved by the server; live match start is still in progress.'
+                  : `The server has moved this room to ${room.phase.replaceAll('_', ' ')}. The live match screens are still being connected.`
                 : 'This is a local prototype. The other players shown here are sample profiles, not connected people.'}</p>
             </div>
           </div>
@@ -81,6 +96,10 @@ export default function LobbyScreen({ room, message, isLive = false, isBusy = fa
               <div><p className={styles.cardEyebrow}>THE LINEUP</p><h2 id="players-title">Players</h2></div>
               <span className={styles.playerCount}>{room.players.length}<span> / {room.capacity}</span></span>
             </div>
+
+            {isLive && <StatusMessage className={styles.connectionStatus} status={connectionStatus === 'error' ? 'error' : connectionStatus === 'connected' && !hasSequenceGap ? 'success' : 'reconnecting'}>
+              {connectionText}
+            </StatusMessage>}
 
             <ul aria-label="Players in this room" className={styles.playerList}>
               {room.players.map((player) => (
@@ -107,34 +126,29 @@ export default function LobbyScreen({ room, message, isLive = false, isBusy = fa
               </StatusMessage>
             </details>}
 
-            {!isLive && <div className={styles.readySummary}>
+            <div className={styles.readySummary}>
               <span className={styles.readyMeter} aria-hidden="true">
                 <span style={{ width: `${(readyCount / room.players.length) * 100}%` }} />
               </span>
               <span>{readyCount} of {room.players.length} ready</span>
-            </div>}
+            </div>
 
-            {isLive ? (
-              <div className={styles.actions}>
-                <Button className={styles.readyButton} disabled={isBusy} onClick={onRefresh} variant="unstyled">
-                  {isBusy ? 'Refreshing…' : 'Refresh players'}
-                </Button>
-              </div>
-            ) : <div className={styles.actions}>
+            <div className={styles.actions}>
               <Button
                 className={`${styles.readyButton} ${currentPlayer?.ready ? styles.readyButtonActive : ''}`}
+                disabled={isBusy || !isConnected || !isLobbyPhase}
                 onClick={onToggleReady}
                 aria-pressed={Boolean(currentPlayer?.ready)}
                 variant="unstyled"
               >
                 {currentPlayer?.ready ? '✓ You’re ready' : 'I’m ready'}
               </Button>
-              <Button className={styles.startButton} disabled={!canStart} onClick={onStart} variant="unstyled">
+              <Button className={styles.startButton} disabled={!canStart || isBusy || !isConnected} onClick={onStart} variant="unstyled">
                 Start match <span aria-hidden="true">→</span>
               </Button>
-            </div>}
-            <StatusMessage as="p" className={styles.startHint} icon="" status={message ? (message.includes('unavailable') || message.includes('failed') || message.includes('Cannot') ? 'error' : 'success') : 'info'}>
-              {message || (isLive ? 'Refresh to see members who joined from other browsers.' : startHint)}
+            </div>
+            <StatusMessage as="p" className={styles.startHint} icon="" status={message ? messageStatus : 'info'}>
+              {message || (isLive ? 'Players and ready states update automatically.' : startHint)}
             </StatusMessage>
           </Panel>
         </section>

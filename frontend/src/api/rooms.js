@@ -1,5 +1,14 @@
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000').replace(/\/$/, '');
 
+export function roomWebSocketUrl() {
+  const url = new URL(`${API_BASE_URL}/api/rooms/ws`);
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw new Error('The room API URL must use HTTP or HTTPS.');
+  }
+  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+  return url.toString();
+}
+
 export const ROOM_CODE_LENGTH = 8;
 export const ROOM_CODE_CHARACTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
@@ -16,7 +25,7 @@ export class RoomApiError extends Error {
  * The browser deliberately accepts only the fields it needs for the lobby;
  * role and objective fields stay server-projected and are never inferred here.
  */
-function requireRoomSnapshot(snapshot) {
+export function requireRoomSnapshot(snapshot) {
   const validPhase = [
     'lobby', 'category_vote', 'role_reveal', 'coding_round',
     'meeting_discussion', 'player_vote', 'round_result', 'game_over',

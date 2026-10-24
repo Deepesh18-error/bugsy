@@ -251,6 +251,11 @@
   letter-spacing: -0.05em;
 }
 
+.connectionStatus {
+  margin: -5px 0 18px;
+  font-size: 0.7rem;
+}
+
 .playerCount {
   color: var(--color-text);
   font-family: var(--font-mono);
