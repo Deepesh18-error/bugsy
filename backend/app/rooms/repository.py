@@ -17,6 +17,20 @@ class RoomStorageError(Exception):
 class StoredRoom:
     state: RoomState
     raw: bytes
+    sequence: int = 0
+    receipts: tuple[CommandReceipt, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class CommandReceipt:
+    player_id: str
+    request_id: str
+    fingerprint: str
+    sequence: int
+    accepted: bool
+    code: str | None
+    message: str | None
+    recorded_at: datetime
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,6 +61,8 @@ class RoomRepository(Protocol):
         *,
         new_session: GuestSession | None = None,
         revoke_credential_hash: str | None = None,
+        receipt: CommandReceipt | None = None,
+        advance_sequence: bool = False,
     ) -> bool: ...
 
     async def revoke_session(self, credential_hash: str) -> None: ...

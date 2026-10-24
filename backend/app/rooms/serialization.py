@@ -26,7 +26,7 @@ from app.game.models import (
     Vote,
     VoteKind,
 )
-from app.rooms.repository import RoomStorageError
+from app.rooms.repository import CommandReceipt, RoomStorageError
 
 
 STORAGE_VERSION = 1
@@ -39,8 +39,15 @@ def _json_default(value: object) -> str:
     raise TypeError(f"Unsupported room-storage value: {type(value).__name__}")
 
 
-def serialize_room(state: RoomState) -> bytes:
-    payload = {"storage_version": STORAGE_VERSION, "room": asdict(state)}
+def serialize_room(
+    state: RoomState, *, sequence: int = 0, receipts: tuple[CommandReceipt, ...] = ()
+) -> bytes:
+    payload = {
+        "storage_version": STORAGE_VERSION,
+        "room": asdict(state),
+        "sequence": sequence,
+        "receipts": [asdict(item) for item in receipts],
+    }
     encoded = json.dumps(
         payload, default=_json_default, sort_keys=True, separators=(",", ":"),
         ensure_ascii=False,
@@ -186,3 +193,31 @@ def deserialize_room(raw: bytes) -> RoomState:
         )
     except (KeyError, TypeError, ValueError, UnicodeDecodeError) as exc:
         raise RoomStorageError("Stored room data is invalid or incompatible.") from exc
+
+
+def deserialize_metadata(raw: bytes) -> tuple[int, tuple[CommandReceipt, ...]]:
+    """Read transport metadata; legacy Phase 5 rooms begin at sequence zero."""
+
+    try:
+        value = json.loads(raw)
+        sequence = value.get("sequence", 0)
+        if type(sequence) is not int or sequence < 0:
+            raise ValueError("Invalid room sequence.")
+        receipts = tuple(
+            CommandReceipt(
+                player_id=item["player_id"],
+                request_id=item["request_id"],
+                fingerprint=item["fingerprint"],
+                sequence=item["sequence"],
+                accepted=item["accepted"],
+                code=item["code"],
+                message=item["message"],
+                recorded_at=_date(item["recorded_at"]),
+            )
+            for item in value.get("receipts", [])
+        )
+        if len(receipts) > 1024:
+            raise ValueError("Too many stored command receipts.")
+        return sequence, receipts
+    except (KeyError, TypeError, ValueError, UnicodeDecodeError) as exc:
+        raise RoomStorageError("Stored room metadata is invalid.") from exc

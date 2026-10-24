@@ -9,7 +9,9 @@ from redis.asyncio import Redis
 from redis.exceptions import RedisError
 
 from app.api.rooms import router as room_router
-from app.api.websocket import RoomConnectionManager, router as websocket_router
+from app.api.websocket import router as websocket_router
+from app.realtime.connection_manager import RoomConnectionManager
+from app.realtime.coordinator import RoomCoordinator
 from app.rooms.redis_repository import RedisRoomRepository
 from app.rooms.service import RoomPolicy, RoomService
 
@@ -51,8 +53,10 @@ async def lifespan(app: FastAPI):
     app.state.allowed_origins = allowed_origins
     app.state.secure_guest_cookie = secure_guest_cookie
     app.state.guest_cookie_samesite = guest_cookie_samesite
+    repository = RedisRoomRepository(client)
+    app.state.room_repository = repository
     app.state.room_service = RoomService(
-        RedisRoomRepository(client),
+        repository,
         policy=RoomPolicy(
             room_ttl_seconds=int(os.getenv("CODEMAFIA_ROOM_TTL_SECONDS", "3600")),
             credential_ttl_seconds=int(os.getenv("CODEMAFIA_CREDENTIAL_TTL_SECONDS", "3600")),
@@ -60,10 +64,8 @@ async def lifespan(app: FastAPI):
             max_join_attempts=int(os.getenv("CODEMAFIA_MAX_JOIN_ATTEMPTS", "30")),
         ),
     )
-    app.state.room_connection_manager = RoomConnectionManager()
-    # The command coordinator is a later Phase 6 increment. Until it is
-    # installed, the gateway validates commands and rejects them explicitly.
-    app.state.room_coordinator = None
+    app.state.room_connection_manager = RoomConnectionManager(app.state.room_service.authenticate_player)
+    app.state.room_coordinator = RoomCoordinator(repository, app.state.room_connection_manager)
     try:
         yield
     finally:

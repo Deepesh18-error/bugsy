@@ -120,8 +120,7 @@ client_message_adapter = TypeAdapter(ClientMessage)
 class ServerSnapshot(WireModel):
     version: Literal[PROTOCOL_VERSION] = PROTOCOL_VERSION
     type: Literal["snapshot"] = "snapshot"
-    # None means the event-stream coordinator has not been connected yet.
-    sequence: int | None = Field(default=None, ge=0)
+    sequence: int = Field(ge=0)
     request_id: RequestId | None = None
     room: RoomSnapshot
 
@@ -138,7 +137,7 @@ class ServerEvent(WireModel):
     type: Literal["event"] = "event"
     sequence: int = Field(ge=1)
     name: ShortToken
-    # Only the future player-safe event projector may construct this payload.
+    # Only the player-safe event projector may construct this payload.
     payload: dict[str, JsonValue]
 
 

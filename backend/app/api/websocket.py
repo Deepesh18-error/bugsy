@@ -1,9 +1,4 @@
-"""Authenticated WebSocket gateway for one guest's room.
-
-This increment supports an authorized snapshot and application heartbeat.
-Commands are parsed but fail closed until the room coordinator is installed;
-the gateway must never acknowledge a game action before durable persistence.
-"""
+"""Authenticated WebSocket gateway for one guest's room."""
 
 from __future__ import annotations
 
@@ -11,13 +6,11 @@ import asyncio
 from collections import deque
 import json
 from time import monotonic
-from typing import Protocol
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import ValidationError
 
 from app.api.rooms import COOKIE_NAME
-from app.api.schemas import build_room_response
 from app.api.websocket_schemas import (
     MAX_MESSAGE_BYTES,
     PROTOCOL_VERSION,
@@ -32,6 +25,9 @@ from app.api.websocket_schemas import (
 )
 from app.rooms.repository import RoomStorageError
 from app.rooms.service import AuthenticatedGuest, RoomServiceError
+from app.realtime.auth import authenticate_socket
+from app.realtime.connection_manager import RoomConnection, RoomConnectionManager
+from app.realtime.snapshots import room_snapshot
 
 
 router = APIRouter(prefix="/api/rooms", tags=["rooms"])
@@ -39,50 +35,6 @@ IDLE_TIMEOUT_SECONDS = 90
 RATE_WINDOW_SECONDS = 10
 MAX_MESSAGES_PER_WINDOW = 40
 MAX_INVALID_MESSAGES = 3
-
-
-class RoomCommandCoordinator(Protocol):
-    """The later command coordinator must persist before returning an ack."""
-
-    async def dispatch(
-        self, guest: AuthenticatedGuest, command: ClientCommand
-    ) -> ServerAcknowledgment | ServerError: ...
-
-
-class RoomConnectionManager:
-    """Track sockets in this one API process for later room event delivery."""
-
-    def __init__(self) -> None:
-        self._connections: dict[str, dict[str, set[WebSocket]]] = {}
-
-    def register(self, room_code: str, player_id: str, socket: WebSocket) -> None:
-        self._connections.setdefault(room_code, {}).setdefault(player_id, set()).add(socket)
-
-    def unregister(self, room_code: str, player_id: str, socket: WebSocket) -> None:
-        room = self._connections.get(room_code)
-        if room is None:
-            return
-        sockets = room.get(player_id)
-        if sockets is not None:
-            sockets.discard(socket)
-            if not sockets:
-                del room[player_id]
-        if not room:
-            del self._connections[room_code]
-
-    async def close_all(self) -> None:
-        sockets = {
-            socket
-            for room in self._connections.values()
-            for player_sockets in room.values()
-            for socket in player_sockets
-        }
-        for socket in sockets:
-            try:
-                await socket.close(code=1001)
-            except (RuntimeError, OSError, WebSocketDisconnect):
-                pass
-        self._connections.clear()
 
 
 def _unique_object_keys(pairs: list[tuple[str, object]]) -> dict[str, object]:
@@ -94,21 +46,14 @@ def _unique_object_keys(pairs: list[tuple[str, object]]) -> dict[str, object]:
     return value
 
 
-async def _send(socket: WebSocket, message: ServerSnapshot | ServerPong | ServerError | ServerAcknowledgment) -> None:
-    await socket.send_json(message.model_dump(mode="json"))
+async def _send(connection: RoomConnection, message: ServerSnapshot | ServerPong | ServerError | ServerAcknowledgment) -> None:
+    await connection.send(message.model_dump(mode="json"))
 
 
 async def _snapshot(
-    socket: WebSocket, guest: AuthenticatedGuest, request_id: str | None = None
+    connection: RoomConnection, guest: AuthenticatedGuest, request_id: str | None = None
 ) -> None:
-    await _send(
-        socket,
-        ServerSnapshot(
-            sequence=None,
-            request_id=request_id,
-            room=build_room_response(guest.state, guest.player_id).room,
-        ),
-    )
+    await _send(connection, room_snapshot(guest.state, guest.player_id, guest.sequence, request_id))
 
 
 async def _deny(socket: WebSocket) -> None:
@@ -118,29 +63,19 @@ async def _deny(socket: WebSocket) -> None:
 
 @router.websocket("/ws")
 async def room_websocket(socket: WebSocket) -> None:
-    origin = socket.headers.get("origin")
-    if origin is None or origin not in socket.app.state.allowed_origins:
+    guest = await authenticate_socket(socket)
+    if guest is None:
         await _deny(socket)
         return
-    # Credentials and room identity belong in the HttpOnly cookie, never a URL.
-    if socket.url.query:
-        await _deny(socket)
-        return
-
     credential = socket.cookies.get(COOKIE_NAME)
-    try:
-        guest = await socket.app.state.room_service.authenticate_player(credential)
-    except (RoomServiceError, RoomStorageError):
-        await _deny(socket)
-        return
 
     await socket.accept()
     manager: RoomConnectionManager = socket.app.state.room_connection_manager
-    manager.register(guest.state.room_code, guest.player_id, socket)
+    connection = manager.register(guest.state.room_code, guest.player_id, socket, credential)
     invalid_messages = 0
     received_at: deque[float] = deque()
     try:
-        await _snapshot(socket, guest)
+        await _snapshot(connection, guest)
         while True:
             try:
                 frame = await asyncio.wait_for(
@@ -171,7 +106,7 @@ async def room_websocket(socket: WebSocket) -> None:
                 payload = json.loads(raw, object_pairs_hook=_unique_object_keys)
                 if isinstance(payload, dict) and payload.get("version") != PROTOCOL_VERSION:
                     await _send(
-                        socket,
+                        connection,
                         ServerError(code="UNSUPPORTED_VERSION", message="Unsupported protocol version."),
                     )
                     await socket.close(code=1002)
@@ -180,7 +115,7 @@ async def room_websocket(socket: WebSocket) -> None:
             except (ValueError, ValidationError, TypeError, RecursionError):
                 invalid_messages += 1
                 await _send(
-                    socket,
+                    connection,
                     ServerError(code="INVALID_MESSAGE", message="Invalid WebSocket message."),
                 )
                 if invalid_messages >= MAX_INVALID_MESSAGES:
@@ -197,23 +132,23 @@ async def room_websocket(socket: WebSocket) -> None:
                 return
             except RoomStorageError:
                 await _send(
-                    socket,
+                    connection,
                     ServerError(code="STORAGE_UNAVAILABLE", message="Room storage is unavailable."),
                 )
                 await socket.close(code=1013)
                 return
 
             if isinstance(message, ClientPing):
-                await _send(socket, ServerPong(nonce=message.nonce))
+                await _send(connection, ServerPong(nonce=message.nonce))
             elif isinstance(message, ClientSnapshotRequest):
-                await _snapshot(socket, guest, request_id=message.request_id)
+                await _snapshot(connection, guest, request_id=message.request_id)
             elif isinstance(message, ClientCommand):
-                coordinator: RoomCommandCoordinator | None = getattr(
+                coordinator = getattr(
                     socket.app.state, "room_coordinator", None
                 )
                 if coordinator is None:
                     await _send(
-                        socket,
+                        connection,
                         ServerError(
                             code="COMMANDS_UNAVAILABLE",
                             message="Live game commands are not available yet.",
@@ -227,7 +162,7 @@ async def room_websocket(socket: WebSocket) -> None:
                     result = await coordinator.dispatch(guest, message)
                 except RoomStorageError:
                     await _send(
-                        socket,
+                        connection,
                         ServerError(
                             code="STORAGE_UNAVAILABLE",
                             message="Room storage is unavailable.",
@@ -239,8 +174,8 @@ async def room_websocket(socket: WebSocket) -> None:
                 if not isinstance(result, (ServerAcknowledgment, ServerError)):
                     await socket.close(code=1011, reason="Invalid coordinator response.")
                     return
-                await _send(socket, result)
+                await _send(connection, result)
     except WebSocketDisconnect:
         pass
     finally:
-        manager.unregister(guest.state.room_code, guest.player_id, socket)
+        manager.unregister(connection)

@@ -4,14 +4,14 @@ from __future__ import annotations
 
 import json
 import math
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
 
 from app.game.models import RoomState
-from app.rooms.repository import GuestSession, RoomStorageError, StoredRoom
-from app.rooms.serialization import deserialize_room, serialize_room
+from app.rooms.repository import CommandReceipt, GuestSession, RoomStorageError, StoredRoom
+from app.rooms.serialization import deserialize_metadata, deserialize_room, serialize_room
 
 
 _CREATE_ROOM = """
@@ -109,7 +109,8 @@ class RedisRoomRepository:
             return None
         if not isinstance(raw, bytes):
             raise RoomStorageError("Redis must return byte-valued room records.")
-        return StoredRoom(state=deserialize_room(raw), raw=raw)
+        sequence, receipts = deserialize_metadata(raw)
+        return StoredRoom(state=deserialize_room(raw), raw=raw, sequence=sequence, receipts=receipts)
 
     async def load_session(self, credential_hash: str) -> GuestSession | None:
         try:
@@ -136,6 +137,8 @@ class RedisRoomRepository:
         *,
         new_session: GuestSession | None = None,
         revoke_credential_hash: str | None = None,
+        receipt: CommandReceipt | None = None,
+        advance_sequence: bool = False,
     ) -> bool:
         if updated.room_code != previous.state.room_code:
             raise ValueError("A room update cannot change its room code.")
@@ -143,6 +146,13 @@ class RedisRoomRepository:
             raise ValueError("New session belongs to another room.")
         new_key = _session_key(new_session.credential_hash) if new_session else "codemafia:v1:unused:new"
         old_key = _session_key(revoke_credential_hash) if revoke_credential_hash else "codemafia:v1:unused:old"
+        sequence = previous.sequence + (1 if updated != previous.state or advance_sequence else 0)
+        if receipt is not None and receipt.sequence != sequence:
+            raise ValueError("Receipt sequence must match the committed room sequence.")
+        cutoff = datetime.now(timezone.utc) - timedelta(minutes=10)
+        receipts = tuple(item for item in previous.receipts if item.recorded_at >= cutoff)
+        if receipt is not None:
+            receipts = (*receipts[-1023:], receipt)
         try:
             result = await self._client.eval(
                 _COMPARE_AND_SWAP,
@@ -151,7 +161,7 @@ class RedisRoomRepository:
                 new_key,
                 old_key,
                 previous.raw,
-                serialize_room(updated),
+                serialize_room(updated, sequence=sequence, receipts=receipts),
                 _session_value(new_session) if new_session else b"",
                 _expiry_second(updated.expires_at),
                 _expiry_second(new_session.expires_at) if new_session else 0,

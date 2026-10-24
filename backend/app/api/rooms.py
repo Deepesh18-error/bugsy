@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Request, Response
 from fastapi.responses import JSONResponse
 
+from app.api.websocket_schemas import ServerEvent
 from app.api.schemas import (
     ApiError,
     CreateRoomRequest,
@@ -71,6 +72,21 @@ def _success(response: Response, result: GuestResult, request: Request) -> RoomR
     return build_room_response(result.state, result.player_id)
 
 
+async def _notify_room_changed(request: Request, room_code: str) -> None:
+    """Prompt connected guests to refresh after an HTTP room mutation."""
+
+    try:
+        stored = await request.app.state.room_repository.load_room(room_code)
+        if stored is not None and stored.sequence > 0:
+            await request.app.state.room_connection_manager.broadcast(
+                room_code,
+                ServerEvent(sequence=stored.sequence, name="RoomChanged", payload={}),
+            )
+    except RoomStorageError:
+        # The HTTP mutation has already committed. A later snapshot recovers it.
+        return
+
+
 @router.post("", response_model=RoomResponse, status_code=201, responses=ERROR_RESPONSES)
 async def create_room(
     payload: CreateRoomRequest, request: Request, response: Response
@@ -93,6 +109,7 @@ async def join_room(
         result = await _service(request).join_room(
             payload.room_code, payload.display_name, join_subject=subject
         )
+        await _notify_room_changed(request, result.state.room_code)
         return _success(response, result, request)
     except (RoomServiceError, RoomStorageError) as exc:
         return _error(exc)
@@ -103,6 +120,7 @@ async def resume_player(request: Request, response: Response) -> RoomResponse | 
     try:
         _require_allowed_origin(request)
         result = await _service(request).resume_player(request.cookies.get(COOKIE_NAME))
+        await _notify_room_changed(request, result.state.room_code)
         return _success(response, result, request)
     except (RoomServiceError, RoomStorageError) as exc:
         return _error(exc)
@@ -112,7 +130,8 @@ async def resume_player(request: Request, response: Response) -> RoomResponse | 
 async def leave_room(request: Request, response: Response) -> Response:
     try:
         _require_allowed_origin(request)
-        await _service(request).leave_room(request.cookies.get(COOKIE_NAME))
+        room_code = await _service(request).leave_room(request.cookies.get(COOKIE_NAME))
+        await _notify_room_changed(request, room_code)
         response.status_code = 204
         response.delete_cookie(
             key=COOKIE_NAME,

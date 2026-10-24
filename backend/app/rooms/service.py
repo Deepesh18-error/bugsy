@@ -61,6 +61,7 @@ class AuthenticatedGuest:
     state: RoomState
     player_id: str
     credential_expires_at: datetime
+    sequence: int = 0
 
 
 class RoomServiceError(Exception):
@@ -245,9 +246,10 @@ class RoomService:
             state=stored.state,
             player_id=session.player_id,
             credential_expires_at=session.expires_at,
+            sequence=stored.sequence,
         )
 
-    async def leave_room(self, credential: str | None) -> None:
+    async def leave_room(self, credential: str | None) -> str:
         digest = _checked_credential_hash(credential)
         for _ in range(5):
             session = await self._repository.load_session(digest)
@@ -257,17 +259,17 @@ class RoomService:
             stored = await self._repository.load_room(session.room_code)
             if stored is None or stored.state.is_closed or now >= stored.state.expires_at:
                 await self._repository.revoke_session(digest)
-                return
+                return session.room_code
             room = stored.state
             player = next((item for item in room.players if item.player_id == session.player_id), None)
             if player is None or player.connection is ConnectionStatus.DEPARTED:
                 await self._repository.revoke_session(digest)
-                return
+                return session.room_code
             if player.connection is ConnectionStatus.DISCONNECTED:
                 restored = restore_player_connection(room, player.player_id, now)
                 if not isinstance(restored, TransitionAccepted):
                     await self._repository.revoke_session(digest)
-                    return
+                    return session.room_code
                 room = restored.state
             outcome = apply_command(
                 room,
@@ -279,5 +281,5 @@ class RoomService:
             if await self._repository.compare_and_swap(
                 stored, outcome.state, revoke_credential_hash=digest
             ):
-                return
+                return session.room_code
         raise RoomServiceError("ROOM_BUSY", "Room changed; please retry.", 409)
