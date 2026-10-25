@@ -26,6 +26,7 @@ class WireModel(BaseModel):
 
 
 class RunnerStatus(StrEnum):
+    RUNNING = "running"
     COMPLETED = "completed"
     TIMED_OUT = "timed_out"
     RESOURCE_LIMIT = "resource_limit"
@@ -126,6 +127,8 @@ class RunnerResult(WireModel):
             raise ValueError("completed results require test verdicts")
         if self.status is not RunnerStatus.COMPLETED and self.tests:
             raise ValueError("infrastructure results cannot include test verdicts")
+        if self.status is RunnerStatus.RUNNING and self.started_at != self.completed_at:
+            raise ValueError("running status timestamps must identify the start instant")
         return self
 
 

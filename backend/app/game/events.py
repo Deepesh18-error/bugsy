@@ -9,7 +9,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from .models import MatchEndReason, MatchWinner, PlayerRole, RoundEndReason
+from .models import (
+    MatchEndReason,
+    MatchWinner,
+    OfficialRunStatus,
+    PlayerRole,
+    RoundEndReason,
+)
 
 
 class GameEvent:
@@ -131,6 +137,15 @@ class OfficialTestRunRequested(GameEvent):
     request_id: str
     player_id: str
     source_revision_id: str
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class OfficialTestRunStatusChanged(GameEvent):
+    occurred_at: datetime
+    request_id: str | None
+    run_id: str
+    source_revision_id: str
+    status: OfficialRunStatus
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)

@@ -69,6 +69,17 @@ class ObjectiveStatus(str, Enum):
     COMPLETED = "completed"
 
 
+class OfficialRunStatus(str, Enum):
+    """Player-safe lifecycle of one official test job."""
+
+    QUEUED = "queued"
+    RUNNING = "running"
+    PASSED = "passed"
+    FAILED = "failed"
+    ERROR = "error"
+    STALE = "stale"
+
+
 class MatchWinner(str, Enum):
     """The team that won a completed match."""
 
@@ -247,6 +258,29 @@ class TestPassEvidence:
 
 
 @dataclass(frozen=True, slots=True)
+class OfficialRunProgress:
+    """Bounded, safe-to-project status metadata for an official run."""
+
+    run_id: str
+    source_revision_id: str
+    requested_by_player_id: str
+    requested_at: datetime
+    updated_at: datetime
+    status: OfficialRunStatus
+
+    def __post_init__(self) -> None:
+        _require_non_blank(self.run_id, "run_id")
+        _require_non_blank(self.source_revision_id, "source_revision_id")
+        _require_non_blank(self.requested_by_player_id, "requested_by_player_id")
+        _require_utc_datetime(self.requested_at, "requested_at")
+        _require_utc_datetime(self.updated_at, "updated_at")
+        if self.updated_at < self.requested_at:
+            raise ValueError("run status cannot precede its request")
+        if not isinstance(self.status, OfficialRunStatus):
+            raise ValueError("status must be an OfficialRunStatus")
+
+
+@dataclass(frozen=True, slots=True)
 class RoundState:
     """The selected, version-pinned challenge and state for one round."""
 
@@ -260,6 +294,7 @@ class RoundState:
     current_source_revision_id: str
     official_test_result: OfficialTestResult | None = None
     official_test_history: tuple[OfficialTestResult, ...] = ()
+    official_run_progress: tuple[OfficialRunProgress, ...] = ()
     test_pass_evidence: tuple[TestPassEvidence, ...] = ()
     sabotage_objectives: tuple[SabotageObjectiveProgress, ...] = ()
     ended_at: datetime | None = None
@@ -282,12 +317,18 @@ class RoundState:
             raise ValueError("round deadline must be after the round start")
         if len(self.official_test_history) > MAX_OFFICIAL_TEST_HISTORY:
             raise ValueError("official test history exceeds its bound")
+        if len(self.official_run_progress) > MAX_OFFICIAL_TEST_HISTORY:
+            raise ValueError("official run progress exceeds its bound")
         if len(self.test_pass_evidence) > MAX_TEST_PASS_EVIDENCE:
             raise ValueError("test pass evidence exceeds its bound")
         if any(not isinstance(item, OfficialTestResult) for item in self.official_test_history):
             raise ValueError("official_test_history contains an invalid result")
         if any(not isinstance(item, TestPassEvidence) for item in self.test_pass_evidence):
             raise ValueError("test_pass_evidence contains invalid evidence")
+        if any(not isinstance(item, OfficialRunProgress) for item in self.official_run_progress):
+            raise ValueError("official_run_progress contains invalid entries")
+        if len({item.run_id for item in self.official_run_progress}) != len(self.official_run_progress):
+            raise ValueError("official run progress cannot repeat a run ID")
         if self.official_test_history and len({item.run_id for item in self.official_test_history}) != len(self.official_test_history):
             raise ValueError("official test history cannot repeat a runner ID")
         if self.official_test_result is not None and (

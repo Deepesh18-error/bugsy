@@ -29,6 +29,9 @@ class MatchSetupPolicy:
     category_vote_seconds: int = 30
     role_reveal_seconds: int = 8
     coding_round_seconds: int = 180
+    meeting_discussion_seconds: int = 30
+    player_vote_seconds: int = 30
+    meeting_cooldown_seconds: int = 60
     allow_draft_content: bool = True
 
     def __post_init__(self) -> None:
@@ -38,6 +41,12 @@ class MatchSetupPolicy:
             raise ValueError("Role reveal duration must be a positive integer.")
         if type(self.coding_round_seconds) is not int or self.coding_round_seconds <= 0:
             raise ValueError("Coding-round duration must be a positive integer.")
+        if type(self.meeting_discussion_seconds) is not int or self.meeting_discussion_seconds <= 0:
+            raise ValueError("Meeting discussion duration must be a positive integer.")
+        if type(self.player_vote_seconds) is not int or self.player_vote_seconds <= 0:
+            raise ValueError("Player-vote duration must be a positive integer.")
+        if type(self.meeting_cooldown_seconds) is not int or self.meeting_cooldown_seconds <= 0:
+            raise ValueError("Meeting cooldown duration must be a positive integer.")
 
 
 # Only the Counter challenge exists today. The catalog is deliberately small
@@ -70,8 +79,14 @@ def make_phase_deadline(kind: DeadlineKind, now: datetime, seconds: int) -> Game
     require_utc_time(now)
     if type(seconds) is not int or seconds <= 0:
         raise ValueError("A phase duration must be a positive integer.")
-    if kind not in {DeadlineKind.CATEGORY_VOTE, DeadlineKind.ROLE_REVEAL, DeadlineKind.CODING_ROUND}:
-        raise ValueError("Match setup only creates category, reveal, and coding deadlines.")
+    if kind not in {
+        DeadlineKind.CATEGORY_VOTE,
+        DeadlineKind.ROLE_REVEAL,
+        DeadlineKind.CODING_ROUND,
+        DeadlineKind.MEETING_DISCUSSION,
+        DeadlineKind.PLAYER_VOTE,
+    }:
+        raise ValueError("Unsupported timed game phase.")
     return GameDeadline(
         deadline_id=uuid4().hex,
         kind=kind,
@@ -161,5 +176,67 @@ def make_first_round(state: RoomState, now: datetime, policy: MatchSetupPolicy) 
         sabotage_objectives=tuple(
             SabotageObjectiveProgress(objective_id=item.id)
             for item in loaded.challenge.sabotage_objectives
+        ),
+    )
+
+
+def make_next_round(
+    state: RoomState,
+    now: datetime,
+    policy: MatchSetupPolicy,
+    *,
+    choices: ChoiceSource,
+) -> RoundState:
+    """Build a fresh, server-selected round in the match's pinned category.
+
+    Prefer an unused challenge when the authored bank has one. Until more
+    content is authored, reuse the eligible challenge so a four-round match
+    remains playable; every round still receives a new document/revision ID.
+    """
+
+    require_utc_time(now)
+    match = state.match
+    current = match.current_round if match is not None else None
+    if (
+        state.phase is not GamePhase.ROUND_RESULT
+        or match is None
+        or match.match_id is None
+        or match.selected_category_id is None
+        or current is None
+    ):
+        raise ValueError("A completed coding round is required to prepare the next round.")
+    category_id = match.selected_category_id
+    candidates: list[LoadedChallenge] = []
+    identity = PINNED_CHALLENGES.get(category_id)
+    if identity is not None:
+        loaded = eligible_challenge(category_id, policy)
+        if loaded is not None:
+            candidates.append(loaded)
+    if not candidates:
+        raise ValueError("No eligible challenge is available for the selected category.")
+    used = {
+        (item.challenge_id, item.challenge_version)
+        for item in (*match.round_history, current)
+    }
+    fresh = tuple(
+        item for item in candidates
+        if (item.challenge.id, item.challenge.version) not in used
+    )
+    selected = choices.choose_one(fresh or tuple(candidates))
+    number = match.round_number + 1
+    return RoundState(
+        number=number,
+        category_id=selected.challenge.category,
+        challenge_id=selected.challenge.id,
+        challenge_version=selected.challenge.version,
+        challenge_content_digest=selected.content_digest,
+        started_at=now,
+        deadline=make_phase_deadline(
+            DeadlineKind.CODING_ROUND, now, policy.coding_round_seconds
+        ),
+        current_source_revision_id=f"seed-{uuid4().hex}",
+        sabotage_objectives=tuple(
+            SabotageObjectiveProgress(objective_id=item.id)
+            for item in selected.challenge.sabotage_objectives
         ),
     )

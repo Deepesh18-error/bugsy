@@ -7,9 +7,13 @@ from datetime import datetime, timezone
 
 from app.api.websocket_schemas import ServerEvent
 from app.challenges.loader import ChallengeLoadError, load_challenge
-from app.game.models import GamePhase, OfficialTestResult
+from app.game.models import GamePhase, OfficialRunStatus, OfficialTestResult
 from app.game.outcomes import TransitionAccepted
-from app.game.transitions import record_official_test_result
+from app.game.transitions import (
+    record_official_run_status,
+    record_official_test_result,
+    record_verified_sabotage_objective,
+)
 from app.realtime.connection_manager import RoomConnectionManager
 from app.realtime.snapshots import project_event
 from app.rooms.repository import RoomRepository
@@ -87,26 +91,89 @@ class RunnerResultProcessor:
                 state = stored.state
                 match = state.match
                 current = match.current_round if match else None
-                # Stale results are expected after edits, deadline resolution,
-                # rematches, or room expiry. They are discarded and ACKed.
+                # A retry from an old round/match cannot affect current state.
                 if (
-                    state.phase is not GamePhase.CODING_ROUND
-                    or match is None
+                    match is None
                     or match.match_id != job.match_id
-                    or current is None
-                    or current.number != job.round_number
-                    or current.deadline.deadline_id != job.deadline_id
-                    or current.challenge_id != job.challenge_id
-                    or current.challenge_version != job.challenge_version
-                    or current.challenge_content_digest != job.challenge_content_digest
-                    or current.current_source_revision_id != job.source_revision_id
                 ):
                     return True
+                round_state = current if current and current.number == job.round_number else next(
+                    (item for item in match.round_history if item.number == job.round_number),
+                    None,
+                )
+                if (
+                    round_state is None
+                    or round_state.deadline.deadline_id != job.deadline_id
+                    or round_state.challenge_id != job.challenge_id
+                    or round_state.challenge_version != job.challenge_version
+                    or round_state.challenge_content_digest != job.challenge_content_digest
+                ):
+                    return True
+                if (
+                    state.phase in {GamePhase.MEETING_DISCUSSION, GamePhase.PLAYER_VOTE}
+                    and current is round_state
+                    and round_state.current_source_revision_id == job.source_revision_id
+                ):
+                    # Meetings pause the coding deadline and editor. Keep the
+                    # signed result pending until the ballot resumes the round.
+                    return False
+                if (
+                    round_state.current_source_revision_id != job.source_revision_id
+                    or state.phase is not GamePhase.CODING_ROUND
+                    or current is not round_state
+                ):
+                    stale = record_official_run_status(
+                        state,
+                        round_number=job.round_number,
+                        run_id=result.run_id,
+                        source_revision_id=result.source_revision_id,
+                        status=OfficialRunStatus.STALE,
+                        now=now,
+                        requested_by_player_id=job.requested_by_player_id,
+                        requested_at=job.requested_at,
+                    )
+                    if isinstance(stale, TransitionAccepted) and stale.state != state:
+                        if await self._commit_transition(stored, job.room_code, stale, None):
+                            return True
+                        continue
+                    return True
+                if result.status is RunnerStatus.RUNNING:
+                    running = record_official_run_status(
+                        state,
+                        round_number=job.round_number,
+                        run_id=result.run_id,
+                        source_revision_id=result.source_revision_id,
+                        status=OfficialRunStatus.RUNNING,
+                        now=now,
+                        requested_by_player_id=job.requested_by_player_id,
+                        requested_at=job.requested_at,
+                    )
+                    if isinstance(running, TransitionAccepted):
+                        if running.state == state:
+                            return True
+                        if await self._commit_transition(stored, job.room_code, running, None):
+                            return True
+                        continue
+                    return True
                 if result.status is not RunnerStatus.COMPLETED:
-                    # Infrastructure failures carry no test verdict. ACK them
-                    # without advancing the game sequence; a later retry can
-                    # request another run, and replay cannot create duplicate
-                    # failure notifications.
+                    # Persist an explicit safe error status so clients can stop
+                    # waiting and snapshots survive reconnects.
+                    failed = record_official_run_status(
+                        state,
+                        round_number=job.round_number,
+                        run_id=result.run_id,
+                        source_revision_id=result.source_revision_id,
+                        status=OfficialRunStatus.ERROR,
+                        now=now,
+                        requested_by_player_id=job.requested_by_player_id,
+                        requested_at=job.requested_at,
+                    )
+                    if isinstance(failed, TransitionAccepted):
+                        if failed.state == state:
+                            return True
+                        if await self._commit_transition(stored, job.room_code, failed, None):
+                            return True
+                        continue
                     return True
 
                 if current.official_test_result is not None:
@@ -138,27 +205,90 @@ class RunnerResultProcessor:
                     failed_test_ids=failed_ids,
                     all_required_tests_passed=required_ids.issubset(set(passed_ids)),
                 )
-                outcome = record_official_test_result(state, official, now)
+                has_progress = any(
+                    item.run_id == result.run_id
+                    for item in current.official_run_progress
+                )
+                queued = (
+                    TransitionAccepted(state=state)
+                    if has_progress
+                    else record_official_run_status(
+                        state,
+                        round_number=job.round_number,
+                        run_id=result.run_id,
+                        source_revision_id=result.source_revision_id,
+                        status=OfficialRunStatus.QUEUED,
+                        now=now,
+                        requested_by_player_id=job.requested_by_player_id,
+                        requested_at=job.requested_at,
+                    )
+                )
+                if not isinstance(queued, TransitionAccepted):
+                    return True
+                outcome = record_official_test_result(queued.state, official, now)
                 if not isinstance(outcome, TransitionAccepted):
                     # A result that became late while being processed cannot
                     # change the match or publish a misleading pass state.
                     return True
+                if queued.events:
+                    outcome = TransitionAccepted(
+                        state=outcome.state,
+                        events=(*queued.events, *outcome.events),
+                    )
+
+                # A failed test is not evidence of who caused it. It can only
+                # complete an authored regression objective when that same
+                # test passed on an earlier code revision in this round.
+                # Keep the objective's private description and progress in
+                # domain state; its event projection is impostor-only.
+                current_after_result = (
+                    outcome.state.match.current_round
+                    if outcome.state.match is not None
+                    else None
+                )
+                if current_after_result is not None:
+                    failed_test_ids = set(official.failed_test_ids)
+                    for objective in loaded.challenge.sabotage_objectives:
+                        verification = objective.verification
+                        if verification.kind != "test_regression":
+                            continue
+                        test_id = verification.test_id
+                        passed_before = any(
+                            evidence.test_id == test_id
+                            and evidence.source_revision_id != result.source_revision_id
+                            and evidence.completed_at < result.completed_at
+                            for evidence in current_after_result.test_pass_evidence
+                        )
+                        if not passed_before or test_id not in failed_test_ids:
+                            continue
+                        verified = record_verified_sabotage_objective(
+                            outcome.state,
+                            objective.id,
+                            result.source_revision_id,
+                            now,
+                        )
+                        if isinstance(verified, TransitionAccepted):
+                            outcome = TransitionAccepted(
+                                state=verified.state,
+                                events=(*outcome.events, *verified.events),
+                            )
                 payload = player_safe_result_payload(loaded.challenge, result)
                 if await self._commit_transition(stored, job.room_code, outcome, payload):
                     return True
             return False
 
-    async def _commit_transition(self, stored, room_code: str, outcome, payload: dict[str, object]) -> bool:
+    async def _commit_transition(self, stored, room_code: str, outcome, payload: dict[str, object] | None) -> bool:
         sequence = stored.sequence + 1
         projected = tuple(project_event(event, sequence) for event in outcome.events)
         if not await self._rooms.compare_and_swap(
-            stored, outcome.state, advance_sequence=not outcome.events,
+            stored, outcome.state, advance_sequence=bool(outcome.events),
         ):
             return False
-        await self._connections.broadcast(
-            room_code,
-            ServerEvent(sequence=sequence, name="OfficialTestResult", payload=payload),
-        )
+        if payload is not None:
+            await self._connections.broadcast(
+                room_code,
+                ServerEvent(sequence=sequence, name="OfficialTestResult", payload=payload),
+            )
         for recipient, event in projected:
             if recipient is None:
                 await self._connections.broadcast(room_code, event)

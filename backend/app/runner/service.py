@@ -41,6 +41,31 @@ class RunnerService:
     async def enqueue_for_request(
         self, stored: StoredRoom, command: RequestOfficialTestRun, now: datetime
     ) -> RunnerEnqueueReceipt:
+        """Queue a manual request through the shared revision-coalescing path."""
+
+        return await self.enqueue_for_revision(
+            stored,
+            player_id=command.player_id,
+            request_id=command.request_id,
+            source_revision_id=command.source_revision_id,
+            now=now,
+        )
+
+    async def enqueue_for_revision(
+        self,
+        stored: StoredRoom,
+        *,
+        player_id: str,
+        request_id: str,
+        source_revision_id: str,
+        now: datetime,
+    ) -> RunnerEnqueueReceipt:
+        """Shared entry point for manual and debounced automatic test triggers.
+
+        Redis deduplicates the immutable room/match/round/revision/source/test
+        identity, not the triggering request ID. Thus a manual click and an
+        automatic trigger for the same saved revision share one runner job.
+        """
         if not self._enabled:
             raise RunnerUnavailable("Official test execution is not configured.")
         state = stored.state
@@ -51,10 +76,10 @@ class RunnerService:
             or match is None
             or match.match_id is None
             or current is None
-            or command.source_revision_id != current.current_source_revision_id
+            or source_revision_id != current.current_source_revision_id
             or current.deadline.due_at <= now
             or not any(
-                player.player_id == command.player_id and player.is_alive
+                player.player_id == player_id and player.is_alive
                 and player.connection.value == "connected"
                 for player in state.players
             )
@@ -112,8 +137,8 @@ class RunnerService:
                 runtime_policy=loaded.challenge.runtime_policy,
                 source_revision_id=current.current_source_revision_id,
                 source=source,
-                requested_by_player_id=command.player_id,
-                request_id=command.request_id,
+                requested_by_player_id=player_id,
+                request_id=request_id,
                 requested_at=now,
                 tests=tests,
                 dedupe_key=dedupe_key,

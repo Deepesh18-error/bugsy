@@ -16,7 +16,7 @@ from app.game.models import DeadlineKind, GamePhase, RoomState
 from app.game.idempotency import DEFAULT_REQUEST_ID_TTL_SECONDS, durable_receipt_is_live
 from app.rooms.repository import (
     CommandReceipt, EditorDocument, EditorRevision, GuestSession, RoomStorageError,
-    ScheduledCategoryDeadline, StoredRoom,
+    ScheduledCategoryDeadline, ScheduledGameDeadline, StoredRoom,
     editor_document_id,
 )
 from app.rooms.serialization import (
@@ -96,7 +96,9 @@ redis.call('SET', KEYS[2], ARGV[2], 'EXAT', tonumber(ARGV[3]))
 return 1
 """
 
-_CATEGORY_DEADLINE_INDEX = "codemafia:v1:category-deadlines"
+_GAME_DEADLINE_INDEX = "codemafia:v1:category-deadlines"
+# Preserve the existing Redis key so in-flight setup deadlines survive upgrade.
+_CATEGORY_DEADLINE_INDEX = _GAME_DEADLINE_INDEX
 
 
 def _expiry_second(value: datetime) -> int:
@@ -113,13 +115,25 @@ def _editor_key(document_id: str) -> str:
     return f"codemafia:v1:editor:{document_id}"
 
 
-def _category_deadline_member(state: RoomState) -> tuple[str, float] | None:
+def _game_deadline_member(state: RoomState) -> tuple[str, float] | None:
     deadline = state.phase_deadline
     if (
         state.is_closed
-        or state.phase not in {GamePhase.CATEGORY_VOTE, GamePhase.ROLE_REVEAL, GamePhase.CODING_ROUND}
+        or state.phase not in {
+            GamePhase.CATEGORY_VOTE,
+            GamePhase.ROLE_REVEAL,
+            GamePhase.CODING_ROUND,
+            GamePhase.MEETING_DISCUSSION,
+            GamePhase.PLAYER_VOTE,
+        }
         or deadline is None
-        or deadline.kind not in {DeadlineKind.CATEGORY_VOTE, DeadlineKind.ROLE_REVEAL, DeadlineKind.CODING_ROUND}
+        or deadline.kind not in {
+            DeadlineKind.CATEGORY_VOTE,
+            DeadlineKind.ROLE_REVEAL,
+            DeadlineKind.CODING_ROUND,
+            DeadlineKind.MEETING_DISCUSSION,
+            DeadlineKind.PLAYER_VOTE,
+        }
     ):
         return None
     return _index_member(state.room_code, deadline.deadline_id), deadline.due_at.timestamp()
@@ -168,7 +182,7 @@ class RedisRoomRepository:
     async def create_room(self, state: RoomState, session: GuestSession) -> bool:
         if session.room_code != state.room_code:
             raise ValueError("Session and room codes must match.")
-        deadline = _category_deadline_member(state)
+        deadline = _game_deadline_member(state)
         try:
             result = await self._client.eval(
                 _CREATE_ROOM,
@@ -269,8 +283,8 @@ class RedisRoomRepository:
             _receipt_key(updated.room_code, receipt.player_id, receipt.request_id)
             if receipt is not None else "codemafia:v1:unused:receipt"
         )
-        prior_deadline = _category_deadline_member(previous.state)
-        next_deadline = _category_deadline_member(updated)
+        prior_deadline = _game_deadline_member(previous.state)
+        next_deadline = _game_deadline_member(updated)
         try:
             result = await self._client.eval(
                 _COMPARE_AND_SWAP,
@@ -316,9 +330,9 @@ class RedisRoomRepository:
         except RedisError as exc:
             raise RoomStorageError("Room storage is unavailable.") from exc
 
-    async def due_category_deadlines(
+    async def due_game_deadlines(
         self, now: datetime, *, limit: int
-    ) -> tuple[ScheduledCategoryDeadline, ...]:
+    ) -> tuple[ScheduledGameDeadline, ...]:
         if now.tzinfo is None or now.utcoffset() is None or now.utcoffset().total_seconds() != 0:
             raise ValueError("Deadline lookup time must use UTC.")
         if type(limit) is not int or limit <= 0:
@@ -334,14 +348,14 @@ class RedisRoomRepository:
         try:
             for raw_member, score in rows:
                 room_code, deadline_id = raw_member.decode("ascii").split(":", 1)
-                entries.append(ScheduledCategoryDeadline(
+                entries.append(ScheduledGameDeadline(
                     room_code, deadline_id, datetime.fromtimestamp(score, timezone.utc)
                 ))
         except (AttributeError, UnicodeError, ValueError, OverflowError) as exc:
             raise RoomStorageError("Deadline index contains an invalid entry.") from exc
         return tuple(entries)
 
-    async def remove_category_deadline(
+    async def remove_game_deadline(
         self, room_code: str, deadline_id: str
     ) -> None:
         try:
@@ -351,8 +365,8 @@ class RedisRoomRepository:
         except RedisError as exc:
             raise RoomStorageError("Deadline index is unavailable.") from exc
 
-    async def rebuild_category_deadline_index(self) -> None:
-        """Backfill active setup/coding deadlines after API startup.
+    async def rebuild_game_deadline_index(self) -> None:
+        """Backfill active game deadlines after API startup.
 
         A concurrent room transition may make an added entry stale. Its
         deadline ID is checked by the coordinator before it can do anything.
@@ -364,13 +378,25 @@ class RedisRoomRepository:
                 stored = await self.load_room(room_code)
                 if stored is None:
                     continue
-                deadline = _category_deadline_member(stored.state)
+                deadline = _game_deadline_member(stored.state)
                 if deadline is not None:
                     await self._client.zadd(_CATEGORY_DEADLINE_INDEX, {deadline[0]: deadline[1]})
         except RedisError as exc:
             raise RoomStorageError("Deadline index could not be rebuilt.") from exc
         except UnicodeError as exc:
             raise RoomStorageError("Stored room key is invalid.") from exc
+
+    # Backward-compatible method names for setup-only callers.
+    async def due_category_deadlines(
+        self, now: datetime, *, limit: int
+    ) -> tuple[ScheduledCategoryDeadline, ...]:
+        return await self.due_game_deadlines(now, limit=limit)
+
+    async def remove_category_deadline(self, room_code: str, deadline_id: str) -> None:
+        await self.remove_game_deadline(room_code, deadline_id)
+
+    async def rebuild_category_deadline_index(self) -> None:
+        await self.rebuild_game_deadline_index()
 
     async def load_editor_document(self, document_id: str) -> EditorDocument | None:
         try:

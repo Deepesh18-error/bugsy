@@ -9,7 +9,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.challenges.loader import load_challenge
 from app.game.models import (
-    ConnectionStatus, GamePhase, ObjectiveStatus, PlayerRole, RoomState,
+    ConnectionStatus, GamePhase, ObjectiveStatus, OfficialRunStatus, PlayerRole,
+    RoomState, RoundEndReason,
 )
 from app.rooms.identity import normalize_display_name
 
@@ -68,6 +69,13 @@ class OfficialResultSummary(ApiModel):
     tests: tuple[PublicTestOutcome, ...]
 
 
+class OfficialRunSummary(ApiModel):
+    run_id: str
+    source_revision_id: str
+    status: OfficialRunStatus
+    requested_at: datetime
+
+
 class RoomSnapshot(ApiModel):
     room_code: str
     phase: GamePhase
@@ -80,10 +88,13 @@ class RoomSnapshot(ApiModel):
     own_objectives: tuple[OwnObjective, ...]
     selected_category_id: str | None
     round_number: int | None
+    round_ended_at: datetime | None
+    round_end_reason: RoundEndReason | None
     challenge_id: str | None
     challenge_version: str | None
     current_source_revision_id: str | None
     official_result: OfficialResultSummary | None = None
+    official_runs: tuple[OfficialRunSummary, ...] = ()
     players: tuple[PublicPlayer, ...]
 
 
@@ -131,6 +142,19 @@ def build_room_response(room: RoomState, player_id: str) -> RoomResponse:
         if player.role is PlayerRole.IMPOSTOR and current_round is not None
         else ()
     )
+    official_runs = (
+        tuple(
+            OfficialRunSummary(
+                run_id=item.run_id,
+                source_revision_id=item.source_revision_id,
+                status=item.status,
+                requested_at=item.requested_at,
+            )
+            for item in current_round.official_run_progress
+        )
+        if current_round is not None
+        else ()
+    )
     public_players = tuple(
         PublicPlayer(
             player_id=item.player_id,
@@ -159,10 +183,13 @@ def build_room_response(room: RoomState, player_id: str) -> RoomResponse:
             own_objectives=own_objectives,
             selected_category_id=match.selected_category_id if match else None,
             round_number=match.round_number if match else None,
+            round_ended_at=current_round.ended_at if current_round else None,
+            round_end_reason=current_round.end_reason if current_round else None,
             challenge_id=current_round.challenge_id if current_round else None,
             challenge_version=current_round.challenge_version if current_round else None,
             current_source_revision_id=current_round.current_source_revision_id if current_round else None,
             official_result=official_summary,
+            official_runs=official_runs,
             players=public_players,
         )
     )

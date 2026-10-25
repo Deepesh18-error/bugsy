@@ -43,6 +43,7 @@ from .events import (
     MeetingStarted,
     OfficialTestResultAccepted,
     OfficialTestRunRequested,
+    OfficialTestRunStatusChanged,
     PlayerBallotStored,
     PlayerDeparted,
     PlayerDisconnected,
@@ -77,6 +78,8 @@ from .models import (
     MatchWinner,
     MAX_OFFICIAL_TEST_HISTORY,
     MAX_TEST_PASS_EVIDENCE,
+    OfficialRunProgress,
+    OfficialRunStatus,
     OfficialTestResult,
     ObjectiveStatus,
     PlayerRole,
@@ -852,15 +855,33 @@ def record_source_revision(
     current = state.match.current_round
     if source_revision_id == current.current_source_revision_id:
         return _accepted(state)
+    stale_progress: list[OfficialRunProgress] = []
+    stale_events: list[GameEvent] = []
+    for item in current.official_run_progress:
+        if (
+            item.source_revision_id != source_revision_id
+            and item.status in {OfficialRunStatus.QUEUED, OfficialRunStatus.RUNNING}
+        ):
+            stale_progress.append(replace(item, status=OfficialRunStatus.STALE, updated_at=now))
+            stale_events.append(OfficialTestRunStatusChanged(
+                occurred_at=now,
+                request_id=None,
+                run_id=item.run_id,
+                source_revision_id=item.source_revision_id,
+                status=OfficialRunStatus.STALE,
+            ))
+        else:
+            stale_progress.append(item)
     updated_round = replace(
         current,
         current_source_revision_id=source_revision_id,
         official_test_result=None,
+        official_run_progress=tuple(stale_progress),
     )
     updated = replace(state, match=replace(state.match, current_round=updated_round))
     events: list[GameEvent] = [SourceRevisionChanged(
         occurred_at=now, request_id=None, source_revision_id=source_revision_id,
-    )]
+    ), *stale_events]
     if restored_from_revision_id is not None:
         events.append(SourceRevisionRestored(
             occurred_at=now, request_id=None, source_revision_id=source_revision_id,
@@ -868,6 +889,121 @@ def record_source_revision(
             restored_by_player_id=restored_by_player_id,
         ))
     return _accepted(updated, *events)
+
+
+def record_official_run_status(
+    state: RoomState,
+    *,
+    round_number: int,
+    run_id: str,
+    source_revision_id: str,
+    status: OfficialRunStatus,
+    now: datetime,
+    requested_by_player_id: str | None = None,
+    requested_at: datetime | None = None,
+    request_id: str | None = None,
+) -> TransitionOutcome:
+    """Persist a trusted runner lifecycle update and emit a safe status fact."""
+
+    _validate_now(now)
+    if _room_unavailable(state, now):
+        return _reject(state, RejectionCode.ROOM_CLOSED, "This room is closed.", request_id)
+    match = state.match
+    if match is None:
+        return _reject(state, RejectionCode.WRONG_PHASE, "No match is active.", request_id)
+    target = match.current_round if match.current_round and match.current_round.number == round_number else None
+    history_index = next(
+        (index for index, item in enumerate(match.round_history) if item.number == round_number),
+        None,
+    )
+    if target is None and history_index is not None:
+        target = match.round_history[history_index]
+    if target is None:
+        return _reject(state, RejectionCode.STALE_RESULT, "The runner status belongs to an unknown round.", request_id)
+    if (
+        not isinstance(run_id, str)
+        or not run_id.strip()
+        or not isinstance(source_revision_id, str)
+        or not source_revision_id.strip()
+    ):
+        return _reject(state, RejectionCode.INVALID_SELECTION, "Runner identity is invalid.", request_id)
+    if not isinstance(status, OfficialRunStatus):
+        return _reject(state, RejectionCode.INVALID_SELECTION, "Runner status is invalid.", request_id)
+
+    index = next(
+        (i for i, item in enumerate(target.official_run_progress) if item.run_id == run_id),
+        None,
+    )
+    progress = list(target.official_run_progress)
+    if index is None:
+        if requested_by_player_id is None or requested_at is None:
+            return _reject(state, RejectionCode.STALE_RESULT, "No queued runner request matches this update.", request_id)
+        _validate_now(requested_at)
+        if requested_at > now:
+            return _reject(state, RejectionCode.RESULT_FROM_FUTURE, "Runner request time is in the future.", request_id)
+        if status in {OfficialRunStatus.QUEUED, OfficialRunStatus.RUNNING} and (
+            target is not match.current_round
+            or source_revision_id != target.current_source_revision_id
+        ):
+            return _reject(state, RejectionCode.STALE_REVISION, "Only the current source revision can be queued.", request_id)
+        item = OfficialRunProgress(
+            run_id=run_id,
+            source_revision_id=source_revision_id,
+            requested_by_player_id=requested_by_player_id,
+            requested_at=requested_at,
+            updated_at=now,
+            status=status,
+        )
+        progress.append(item)
+        progress = progress[-MAX_OFFICIAL_TEST_HISTORY:]
+    else:
+        prior = progress[index]
+        if prior.source_revision_id != source_revision_id:
+            return _reject(state, RejectionCode.STALE_RESULT, "Runner revision does not match its queued request.", request_id)
+        if prior.status is status:
+            return _accepted(state)
+        allowed = {
+            OfficialRunStatus.QUEUED: {
+                OfficialRunStatus.RUNNING,
+                OfficialRunStatus.PASSED,
+                OfficialRunStatus.FAILED,
+                OfficialRunStatus.ERROR,
+                OfficialRunStatus.STALE,
+            },
+            OfficialRunStatus.RUNNING: {
+                OfficialRunStatus.PASSED,
+                OfficialRunStatus.FAILED,
+                OfficialRunStatus.ERROR,
+                OfficialRunStatus.STALE,
+            },
+            OfficialRunStatus.PASSED: {OfficialRunStatus.STALE},
+            OfficialRunStatus.FAILED: {OfficialRunStatus.STALE},
+            OfficialRunStatus.ERROR: {OfficialRunStatus.STALE},
+            OfficialRunStatus.STALE: set(),
+        }
+        if status not in allowed[prior.status]:
+            return _reject(state, RejectionCode.STALE_RESULT, "Runner status transition is invalid.", request_id)
+        progress[index] = replace(prior, status=status, updated_at=now)
+
+    updated_round = replace(target, official_run_progress=tuple(progress))
+    updated_match = match
+    if history_index is None:
+        updated_match = replace(match, current_round=updated_round)
+    else:
+        rounds = list(match.round_history)
+        rounds[history_index] = updated_round
+        updated_match = replace(match, round_history=tuple(rounds))
+    updated = replace(state, match=updated_match)
+    return _accepted(
+        updated,
+        OfficialTestRunStatusChanged(
+            occurred_at=now,
+            request_id=request_id,
+            run_id=run_id,
+            source_revision_id=source_revision_id,
+            status=status,
+        ),
+    )
 
 
 def record_verified_sabotage_objective(
@@ -1000,6 +1136,30 @@ def record_official_test_result(
                 completed_at=result.completed_at,
             ))
             known_test_ids.add(test_id)
+    run_progress = list(current_round.official_run_progress)
+    run_progress_index = next(
+        (i for i, item in enumerate(run_progress) if item.run_id == result.run_id),
+        None,
+    )
+    run_status_event: OfficialTestRunStatusChanged | None = None
+    if run_progress_index is not None:
+        prior_progress = run_progress[run_progress_index]
+        final_status = (
+            OfficialRunStatus.PASSED
+            if result.all_required_tests_passed
+            else OfficialRunStatus.FAILED
+        )
+        if prior_progress.status in {OfficialRunStatus.QUEUED, OfficialRunStatus.RUNNING}:
+            run_progress[run_progress_index] = replace(
+                prior_progress, status=final_status, updated_at=now
+            )
+            run_status_event = OfficialTestRunStatusChanged(
+                occurred_at=now,
+                request_id=None,
+                run_id=result.run_id,
+                source_revision_id=result.source_revision_id,
+                status=final_status,
+            )
     updated_round = replace(
         current_round,
         official_test_result=result,
@@ -1007,6 +1167,7 @@ def record_official_test_result(
             *current_round.official_test_history,
             result,
         )[-MAX_OFFICIAL_TEST_HISTORY:],
+        official_run_progress=tuple(run_progress),
         test_pass_evidence=tuple(pass_evidence),
     )
     updated_match = replace(state.match, current_round=updated_round)
@@ -1033,6 +1194,7 @@ def record_official_test_result(
         return _accepted(
             updated,
             accepted_event,
+            *((run_status_event,) if run_status_event is not None else ()),
             MatchEnded(
                 occurred_at=now,
                 request_id=None,
@@ -1042,7 +1204,11 @@ def record_official_test_result(
             ),
         )
 
-    return _accepted(replace(state, match=updated_match), accepted_event)
+    return _accepted(
+        replace(state, match=updated_match),
+        accepted_event,
+        *((run_status_event,) if run_status_event is not None else ()),
+    )
 
 
 def end_coding_round(
@@ -1069,6 +1235,12 @@ def end_coding_round(
         current_round,
         ended_at=now,
         end_reason=RoundEndReason.DEADLINE_EXPIRED,
+        official_run_progress=tuple(
+            replace(item, status=OfficialRunStatus.STALE, updated_at=now)
+            if item.status in {OfficialRunStatus.QUEUED, OfficialRunStatus.RUNNING}
+            else item
+            for item in current_round.official_run_progress
+        ),
     )
     if current_round.number == MAX_ROUNDS:
         impostor = next(

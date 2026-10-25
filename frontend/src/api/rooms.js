@@ -41,12 +41,14 @@ export function requireRoomSnapshot(snapshot) {
   const snapshotKeys = [
     'room_code', 'phase', 'capacity', 'expires_at', 'phase_deadline_at',
     'self_player_id', 'own_category_vote_id', 'own_role', 'own_objectives',
-    'selected_category_id', 'round_number', 'challenge_id', 'challenge_version',
-    'current_source_revision_id', 'official_result', 'players',
+    'selected_category_id', 'round_number', 'round_ended_at', 'round_end_reason',
+    'challenge_id', 'challenge_version', 'current_source_revision_id',
+    'official_result', 'official_runs', 'players',
   ];
   const playerKeys = ['player_id', 'display_name', 'connection', 'is_ready', 'is_alive', 'is_host'];
   const objectiveKeys = ['objective_id', 'status'];
   const officialKeys = ['run_id', 'source_revision_id', 'status', 'all_required_tests_passed', 'tests'];
+  const runKeys = ['run_id', 'source_revision_id', 'status', 'requested_at'];
   const resultTestKeys = ['test_id', 'name', 'passed', 'required_for_civilian_win', 'message'];
   if (!isRecord(snapshot)
     || !hasOnlyKeys(snapshot, snapshotKeys)
@@ -61,6 +63,9 @@ export function requireRoomSnapshot(snapshot) {
     || !isCategory(snapshot.selected_category_id)
     || (snapshot.round_number !== null && (!Number.isInteger(snapshot.round_number)
       || snapshot.round_number < 0 || snapshot.round_number > 4))
+    || (snapshot.round_ended_at !== null && !isUtcTime(snapshot.round_ended_at))
+    || (snapshot.round_end_reason !== null
+      && snapshot.round_end_reason !== 'deadline_expired')
     || (snapshot.challenge_id !== null && typeof snapshot.challenge_id !== 'string')
     || (snapshot.challenge_version !== null && typeof snapshot.challenge_version !== 'string')
     || (snapshot.current_source_revision_id !== null
@@ -83,6 +88,14 @@ export function requireRoomSnapshot(snapshot) {
       && hasOnlyKeys(objective, objectiveKeys)
       && typeof objective.objective_id === 'string'
       && ['not_started', 'in_progress', 'completed'].includes(objective.status))
+    || !Array.isArray(snapshot.official_runs)
+    || snapshot.official_runs.length > 32
+    || !snapshot.official_runs.every((run) => isRecord(run)
+      && hasOnlyKeys(run, runKeys)
+      && typeof run.run_id === 'string'
+      && typeof run.source_revision_id === 'string'
+      && ['queued', 'running', 'passed', 'failed', 'error', 'stale'].includes(run.status)
+      && isUtcTime(run.requested_at))
     || !Array.isArray(snapshot.players)
     || !snapshot.players.every((player) => isRecord(player)
       && hasOnlyKeys(player, playerKeys)

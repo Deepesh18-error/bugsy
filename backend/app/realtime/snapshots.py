@@ -61,6 +61,12 @@ def project_event(event: domain.GameEvent, sequence: int) -> tuple[str | None, S
     elif isinstance(event, domain.OfficialTestRunRequested):
         recipient = event.player_id
         payload = {"source_revision_id": event.source_revision_id}
+    elif isinstance(event, domain.OfficialTestRunStatusChanged):
+        payload = {
+            "run_id": event.run_id,
+            "source_revision_id": event.source_revision_id,
+            "status": event.status.value,
+        }
     elif isinstance(event, domain.OfficialTestResultAccepted):
         payload = {"source_revision_id": event.source_revision_id, "all_required_tests_passed": event.all_required_tests_passed}
     elif isinstance(event, domain.SourceRevisionChanged):
@@ -70,7 +76,7 @@ def project_event(event: domain.GameEvent, sequence: int) -> tuple[str | None, S
                    "restored_from_revision_id": event.restored_from_revision_id,
                    "restored_by_player_id": event.restored_by_player_id}
     elif isinstance(event, domain.RoundEnded):
-        payload = {"round_number": event.round_number}
+        payload = {"round_number": event.round_number, "reason": event.reason.value}
     elif isinstance(event, domain.MatchEnded):
         payload = {"winner": event.winner.value, "reason": event.reason.value, "round_number": event.round_number}
     elif isinstance(event, domain.ChatMessagePosted):

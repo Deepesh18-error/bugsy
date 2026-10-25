@@ -88,18 +88,29 @@ async def lifespan(app: FastAPI):
     )
     app.state.room_coordinator = RoomCoordinator(
         repository, app.state.room_connection_manager,
-        setup_policy=MatchSetupPolicy(allow_draft_content=environment != "production"),
+        setup_policy=MatchSetupPolicy(
+            category_vote_seconds=int(os.getenv("CODEMAFIA_CATEGORY_VOTE_SECONDS", "30")),
+            role_reveal_seconds=int(os.getenv("CODEMAFIA_ROLE_REVEAL_SECONDS", "8")),
+            coding_round_seconds=int(os.getenv("CODEMAFIA_CODING_ROUND_SECONDS", "180")),
+            meeting_discussion_seconds=int(os.getenv("CODEMAFIA_MEETING_DISCUSSION_SECONDS", "30")),
+            player_vote_seconds=int(os.getenv("CODEMAFIA_PLAYER_VOTE_SECONDS", "30")),
+            meeting_cooldown_seconds=int(os.getenv("CODEMAFIA_MEETING_COOLDOWN_SECONDS", "60")),
+            allow_draft_content=environment != "production",
+        ),
         runner_service=app.state.runner_service,
+        automatic_test_debounce_seconds=float(
+            os.getenv("CODEMAFIA_AUTO_TEST_DEBOUNCE_SECONDS", "1.0")
+        ),
     )
     deadline_stop = asyncio.Event()
     deadline_task: asyncio.Task[None] | None = None
     result_stop = asyncio.Event()
     result_task: asyncio.Task[None] | None = None
     try:
-        await repository.rebuild_category_deadline_index()
+        await repository.rebuild_game_deadline_index()
         deadline_task = asyncio.create_task(
             DeadlineScheduler(repository, app.state.room_coordinator).run(deadline_stop),
-            name="category-deadline-worker",
+            name="game-deadline-worker",
         )
         if signing_key:
             result_processor = RunnerResultProcessor(
@@ -118,6 +129,7 @@ async def lifespan(app: FastAPI):
         deadline_stop.set()
         result_stop.set()
         try:
+            await app.state.room_coordinator.close()
             tasks = [task for task in (deadline_task, result_task) if task is not None]
             for task in tasks:
                 task.cancel()

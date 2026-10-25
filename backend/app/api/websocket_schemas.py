@@ -40,6 +40,10 @@ class StartMatchAction(WireModel):
     name: Literal["start_match"]
 
 
+class StartNextRoundAction(WireModel):
+    name: Literal["start_next_round"]
+
+
 class CastCategoryVoteAction(WireModel):
     name: Literal["cast_category_vote"]
     category_id: ShortToken
@@ -79,6 +83,7 @@ class RequestRematchAction(WireModel):
 GameAction = Annotated[
     SetReadyAction
     | StartMatchAction
+    | StartNextRoundAction
     | CastCategoryVoteAction
     | CallEmergencyMeetingAction
     | CastPlayerVoteAction

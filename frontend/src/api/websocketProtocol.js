@@ -48,6 +48,11 @@ const eventPayloadChecks = {
     && isPlayerId(payload.restored_by_player_id),
   OfficialTestRunRequested: (payload) => hasExactKeys(payload, ['source_revision_id'])
     && typeof payload.source_revision_id === 'string' && payload.source_revision_id.length > 0,
+  OfficialTestRunStatusChanged: (payload) => hasExactKeys(payload, [
+    'run_id', 'source_revision_id', 'status',
+  ]) && typeof payload.run_id === 'string' && payload.run_id.length > 0
+    && typeof payload.source_revision_id === 'string' && payload.source_revision_id.length > 0
+    && ['queued', 'running', 'passed', 'failed', 'error', 'stale'].includes(payload.status),
   OfficialTestResult: (payload) => hasExactKeys(payload, [
     'run_id', 'source_revision_id', 'status', 'all_required_tests_passed', 'tests',
   ]) && typeof payload.run_id === 'string' && payload.run_id.length > 0
@@ -62,8 +67,9 @@ const eventPayloadChecks = {
       && typeof test.passed === 'boolean'
       && typeof test.required_for_civilian_win === 'boolean'
       && (test.message === null || typeof test.message === 'string')),
-  RoundEnded: (payload) => hasExactKeys(payload, ['round_number'])
-    && Number.isInteger(payload.round_number) && payload.round_number >= 1 && payload.round_number <= 4,
+  RoundEnded: (payload) => hasExactKeys(payload, ['round_number', 'reason'])
+    && Number.isInteger(payload.round_number) && payload.round_number >= 1 && payload.round_number <= 4
+    && payload.reason === 'deadline_expired',
   PlayerDeparted: (payload) => hasExactKeys(payload, ['player_id'])
     && isPlayerId(payload.player_id),
   PlayerDisconnected: (payload) => hasExactKeys(payload, ['player_id'])

@@ -18,6 +18,8 @@ from app.game.models import (
     MatchState,
     MatchWinner,
     ObjectiveStatus,
+    OfficialRunProgress,
+    OfficialRunStatus,
     OfficialTestResult,
     PlayerRole,
     PlayerState,
@@ -35,9 +37,16 @@ from app.rooms.repository import (
 )
 
 
-STORAGE_VERSION = 3
+STORAGE_VERSION = 4
 LEGACY_STORAGE_VERSION = 1
-PREVIOUS_STORAGE_VERSION = 2
+PREVIOUS_STORAGE_VERSION = 3
+INTERMEDIATE_STORAGE_VERSION = 2
+SUPPORTED_STORAGE_VERSIONS = (
+    LEGACY_STORAGE_VERSION,
+    INTERMEDIATE_STORAGE_VERSION,
+    PREVIOUS_STORAGE_VERSION,
+    STORAGE_VERSION,
+)
 MAX_ROOM_BYTES = 1_048_576
 EDITOR_STORAGE_VERSION = 1
 MAX_EDITOR_RECORD_BYTES = 1_572_864
@@ -146,6 +155,17 @@ def _test_pass_evidence(value: dict[str, Any]) -> TestPassEvidence:
     )
 
 
+def _official_run_progress(value: dict[str, Any]) -> OfficialRunProgress:
+    return OfficialRunProgress(
+        run_id=value["run_id"],
+        source_revision_id=value["source_revision_id"],
+        requested_by_player_id=value["requested_by_player_id"],
+        requested_at=_date(value["requested_at"]),
+        updated_at=_date(value["updated_at"]),
+        status=OfficialRunStatus(value["status"]),
+    )
+
+
 def _round(value: dict[str, Any] | None) -> RoundState | None:
     if value is None:
         return None
@@ -164,6 +184,9 @@ def _round(value: dict[str, Any] | None) -> RoundState | None:
         official_test_result=_official_result(value["official_test_result"]),
         official_test_history=tuple(
             _official_result(item) for item in value.get("official_test_history", [])
+        ),
+        official_run_progress=tuple(
+            _official_run_progress(item) for item in value.get("official_run_progress", [])
         ),
         test_pass_evidence=tuple(
             _test_pass_evidence(item) for item in value.get("test_pass_evidence", [])
@@ -217,7 +240,7 @@ def deserialize_room(raw: bytes) -> RoomState:
         if len(raw) > MAX_ROOM_BYTES:
             raise ValueError("Stored room exceeds the size limit.")
         payload = json.loads(raw)
-        if type(payload["storage_version"]) is not int or payload["storage_version"] not in (LEGACY_STORAGE_VERSION, PREVIOUS_STORAGE_VERSION, STORAGE_VERSION):
+        if type(payload["storage_version"]) is not int or payload["storage_version"] not in SUPPORTED_STORAGE_VERSIONS:
             raise ValueError("Unsupported room storage version.")
         value = payload["room"]
         return RoomState(
@@ -244,12 +267,12 @@ def deserialize_metadata(raw: bytes) -> tuple[int, tuple[CommandReceipt, ...]]:
             raise ValueError("Stored room exceeds the size limit.")
         value = json.loads(raw)
         version = value["storage_version"]
-        if type(version) is not int or version not in (LEGACY_STORAGE_VERSION, PREVIOUS_STORAGE_VERSION, STORAGE_VERSION):
+        if type(version) is not int or version not in SUPPORTED_STORAGE_VERSIONS:
             raise ValueError("Unsupported room storage version.")
-        sequence = value["sequence"] if version >= PREVIOUS_STORAGE_VERSION else value.get("sequence", 0)
+        sequence = value["sequence"] if version >= INTERMEDIATE_STORAGE_VERSION else value.get("sequence", 0)
         if type(sequence) is not int or sequence < 0:
             raise ValueError("Invalid room sequence.")
-        receipt_values = value["receipts"] if version >= PREVIOUS_STORAGE_VERSION else value.get("receipts", [])
+        receipt_values = value["receipts"] if version >= INTERMEDIATE_STORAGE_VERSION else value.get("receipts", [])
         if not isinstance(receipt_values, list) or len(receipt_values) > MAX_LEGACY_EMBEDDED_RECEIPTS:
             raise ValueError("Invalid stored receipts.")
         receipts = tuple(

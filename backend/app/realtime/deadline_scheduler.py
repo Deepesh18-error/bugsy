@@ -15,7 +15,7 @@ from math import isfinite
 from typing import Protocol
 
 from app.game.deadlines import require_utc_time
-from app.rooms.repository import RoomStorageError, ScheduledCategoryDeadline
+from app.rooms.repository import RoomStorageError, ScheduledGameDeadline
 
 
 logger = logging.getLogger(__name__)
@@ -28,22 +28,27 @@ class DeadlineAttempt(str, Enum):
     RETRY = "retry"
 
 
-class CategoryDeadlineIndex(Protocol):
+class GameDeadlineIndex(Protocol):
     """Durable source implemented by the Redis room repository."""
 
-    async def due_category_deadlines(
+    async def due_game_deadlines(
         self, now: datetime, *, limit: int
-    ) -> tuple[ScheduledCategoryDeadline, ...]: ...
+    ) -> tuple[ScheduledGameDeadline, ...]: ...
 
-    async def remove_category_deadline(
+    async def remove_game_deadline(
         self, room_code: str, deadline_id: str
     ) -> None: ...
 
 
-class CategoryDeadlineResolver(Protocol):
-    async def resolve_category_deadline(
+class GameDeadlineResolver(Protocol):
+    async def resolve_game_deadline(
         self, room_code: str, deadline_id: str
     ) -> DeadlineAttempt: ...
+
+
+# Kept as aliases while callers transition from the setup-only scheduler.
+CategoryDeadlineIndex = GameDeadlineIndex
+CategoryDeadlineResolver = GameDeadlineResolver
 
 
 class DeadlineScheduler:
@@ -56,8 +61,8 @@ class DeadlineScheduler:
 
     def __init__(
         self,
-        index: CategoryDeadlineIndex,
-        resolver: CategoryDeadlineResolver,
+        index: GameDeadlineIndex,
+        resolver: GameDeadlineResolver,
         *,
         poll_seconds: float = 0.5,
         batch_size: int = 100,
@@ -81,18 +86,23 @@ class DeadlineScheduler:
 
         now = now or datetime.now(timezone.utc)
         require_utc_time(now)
-        entries = await self._index.due_category_deadlines(now, limit=self._batch_size)
+        lookup = getattr(self._index, "due_game_deadlines", None)
+        if lookup is None:
+            lookup = getattr(self._index, "due_category_deadlines")
+        entries = await lookup(now, limit=self._batch_size)
         completed = 0
         for entry in entries:
             if entry.due_at > now:
                 continue
-            outcome = await self._resolver.resolve_category_deadline(
-                entry.room_code, entry.deadline_id
-            )
+            resolve = getattr(self._resolver, "resolve_game_deadline", None)
+            if resolve is None:
+                resolve = getattr(self._resolver, "resolve_category_deadline")
+            outcome = await resolve(entry.room_code, entry.deadline_id)
             if outcome in {DeadlineAttempt.COMMITTED, DeadlineAttempt.STALE}:
-                await self._index.remove_category_deadline(
-                    entry.room_code, entry.deadline_id
-                )
+                remove = getattr(self._index, "remove_game_deadline", None)
+                if remove is None:
+                    remove = getattr(self._index, "remove_category_deadline")
+                await remove(entry.room_code, entry.deadline_id)
                 completed += 1
         return completed
 
@@ -105,7 +115,7 @@ class DeadlineScheduler:
             except RoomStorageError:
                 # Redis outages are transient. Entries remain durable, so the
                 # next pass can resume without fabricating a room transition.
-                logger.exception("Could not process match-setup deadlines; retrying")
+                logger.exception("Could not process game deadlines; retrying")
             try:
                 await asyncio.wait_for(stop.wait(), timeout=self._poll_seconds)
             except asyncio.TimeoutError:

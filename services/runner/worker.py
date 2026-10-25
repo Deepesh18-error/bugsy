@@ -120,11 +120,28 @@ class RunnerWorker:
             return
 
         published_key = f"codemafia:v1:runner:published:{job.run_id}"
+        running_key = f"codemafia:v1:runner:running:{job.run_id}"
         try:
             if await self._redis.exists(published_key):
                 await self._acknowledge(stream_id)
                 return
             started_at = datetime.now(timezone.utc)
+            if not await self._redis.exists(running_key):
+                running_result = make_signed_result(
+                    job,
+                    status=RunnerStatus.RUNNING,
+                    started_at=started_at,
+                    completed_at=started_at,
+                    tests=(),
+                    signing_key=self._settings.signing_key,
+                )
+                status_stream_id = await self._redis.eval(
+                    _PUBLISH_ONCE, 2, RESULT_STREAM, running_key,
+                    running_result, RESULT_CAP, PUBLISH_TTL_SECONDS,
+                )
+                if not status_stream_id:
+                    logger.warning("Runner status stream is at capacity; job remains pending.")
+                    return
             try:
                 challenge = resolve_job(job)
                 tests = await self._executor.execute(job, challenge)

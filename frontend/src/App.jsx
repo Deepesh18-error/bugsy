@@ -597,8 +597,10 @@ export default function App() {
         deadlineAt={liveRoomSnapshot.phase_deadline_at}
         revisionId={liveRoomSnapshot.current_source_revision_id}
         officialSnapshot={liveRoomSnapshot.official_result}
+        officialRuns={liveRoomSnapshot.official_runs}
         connectionStatus={liveSocket.status}
         officialEvent={liveSocket.lastOfficialResult}
+        runStatusEvent={liveSocket.lastEvent}
         sendCommand={liveSocket.sendCommand}
         requestSnapshot={liveSocket.requestSnapshot}
       />;

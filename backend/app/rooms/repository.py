@@ -101,7 +101,7 @@ class EditorDocument:
 
 
 @dataclass(frozen=True, slots=True)
-class ScheduledCategoryDeadline:
+class ScheduledGameDeadline:
     room_code: str
     deadline_id: str
     due_at: datetime
@@ -111,6 +111,10 @@ class ScheduledCategoryDeadline:
             raise ValueError("Scheduled deadlines require room and deadline IDs.")
         if self.due_at.tzinfo is None or self.due_at.utcoffset() != timedelta(0):
             raise ValueError("Scheduled deadline time must use UTC.")
+
+
+# Kept as an import alias while existing callers migrate to the phase-neutral name.
+ScheduledCategoryDeadline = ScheduledGameDeadline
 
 
 @dataclass(frozen=True, slots=True)
@@ -208,15 +212,15 @@ class RoomRepository(Protocol):
         self, subject_hash: str, *, window_seconds: int, max_attempts: int
     ) -> bool: ...
 
-    async def due_category_deadlines(
+    async def due_game_deadlines(
         self, now: datetime, *, limit: int
-    ) -> tuple[ScheduledCategoryDeadline, ...]: ...
+    ) -> tuple[ScheduledGameDeadline, ...]: ...
 
-    async def remove_category_deadline(
+    async def remove_game_deadline(
         self, room_code: str, deadline_id: str
     ) -> None: ...
 
-    async def rebuild_category_deadline_index(self) -> None: ...
+    async def rebuild_game_deadline_index(self) -> None: ...
 
     async def load_editor_document(self, document_id: str) -> EditorDocument | None: ...
 

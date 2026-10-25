@@ -19,7 +19,8 @@ function formatTime(seconds) {
 }
 
 export default function LiveArena({ room, role, categoryName, roundNumber, totalRounds,
-  deadlineAt, revisionId, connectionStatus, officialEvent, officialSnapshot,
+  deadlineAt, revisionId, connectionStatus, officialEvent, officialSnapshot, officialRuns,
+  runStatusEvent,
   sendCommand, requestSnapshot }) {
   const [session, setSession] = useState(null);
   const [sessionError, setSessionError] = useState('');
@@ -78,6 +79,41 @@ export default function LiveArena({ room, role, categoryName, roundNumber, total
     setOfficialStatus('idle');
     setOfficialError('');
   }, [officialEvent, revisionId]);
+
+  useEffect(() => {
+    if (runStatusEvent?.name !== 'OfficialTestRunStatusChanged') return;
+    const run = runStatusEvent.payload;
+    if (run?.source_revision_id !== revisionId) return;
+    if (run.status === 'queued' || run.status === 'running') {
+      requestedRevisionRef.current = revisionId;
+      setOfficialStatus('waiting');
+      setOfficialError('');
+    } else if (run.status === 'error') {
+      setOfficialStatus('idle');
+      setOfficialError('Official tests could not finish. You can retry this saved revision.');
+    } else if (run.status === 'stale') {
+      setOfficialStatus('idle');
+      setOfficialError('This test run became stale. Run tests again for the current revision.');
+    }
+  }, [runStatusEvent, revisionId]);
+
+  useEffect(() => {
+    const latest = [...(officialRuns ?? [])]
+      .reverse()
+      .find((run) => run.source_revision_id === revisionId);
+    if (!latest) return;
+    if (latest.status === 'error') {
+      setOfficialStatus('idle');
+      setOfficialError('Official tests could not finish. You can retry this saved revision.');
+    } else if (latest.status === 'stale') {
+      setOfficialStatus('idle');
+      setOfficialError('This test run became stale. Run tests again for the current revision.');
+    } else if (latest.status === 'queued' || latest.status === 'running') {
+      requestedRevisionRef.current = revisionId;
+      setOfficialStatus('waiting');
+      setOfficialError('');
+    }
+  }, [officialRuns, revisionId]);
 
   useEffect(() => {
     if (officialSnapshot?.source_revision_id !== revisionId) return;
