@@ -84,9 +84,10 @@ class SequenceReconnectTests(unittest.TestCase):
     def test_reconnect_gets_full_current_snapshot_before_other_messages(self) -> None:
         original = self.connect([text_frame(ready("r1")), DISCONNECT])
         self.assertEqual(original.sent[-1]["type"], "ack")
+        before_reconnect = self.repository.stored.sequence
         reconnect = self.connect([DISCONNECT])
         self.assertEqual([item["type"] for item in reconnect.sent], ["snapshot"])
-        self.assertEqual(reconnect.sent[0]["sequence"], 1)
+        self.assertEqual(reconnect.sent[0]["sequence"], before_reconnect + 1)
         self.assertTrue(next(player for player in reconnect.sent[0]["room"]["players"]
                              if player["player_id"] == "player-2")["is_ready"])
 
@@ -97,7 +98,7 @@ class SequenceReconnectTests(unittest.TestCase):
             text_frame({"version": 1, "type": "snapshot_request", "request_id": "gap-1"}),
             DISCONNECT,
         ])
-        self.assertEqual([message["sequence"] for message in reconnect.sent], [2, 2])
+        self.assertEqual([message["sequence"] for message in reconnect.sent], [6, 6])
         self.assertEqual(reconnect.sent[1]["request_id"], "gap-1")
         self.assertFalse(next(player for player in reconnect.sent[1]["room"]["players"]
                               if player["player_id"] == "player-2")["is_ready"])
@@ -105,15 +106,15 @@ class SequenceReconnectTests(unittest.TestCase):
     def test_retry_after_reconnect_reuses_ack_and_does_not_reapply(self) -> None:
         self.connect([text_frame(ready("r1")), DISCONNECT])
         retry = self.connect([text_frame(ready("r1")), DISCONNECT])
-        self.assertEqual(self.repository.commits, 1)
+        self.assertEqual(len(self.repository.receipts), 1)
         self.assertEqual([item["type"] for item in retry.sent], ["snapshot", "ack"])
-        self.assertEqual(retry.sent[1]["sequence"], 1)
+        self.assertEqual(retry.sent[1]["sequence"], 1)  # Original command receipt.
 
     def test_changed_payload_with_reused_request_id_is_rejected_after_reconnect(self) -> None:
         self.connect([text_frame(ready("r1")), DISCONNECT])
         retry = self.connect([text_frame(ready("r1", False)), DISCONNECT])
         self.assertEqual(retry.sent[1]["code"], "DUPLICATE_REQUEST")
-        self.assertEqual(self.repository.commits, 1)
+        self.assertEqual(len(self.repository.receipts), 1)
 
     def test_reconnect_snapshot_restores_bounded_chat_history(self) -> None:
         original = self.connect([text_frame(chat("chat-1", "hello after reconnect")), DISCONNECT])

@@ -38,6 +38,16 @@ class RunnerService:
         self._runner = runner
         self._enabled = enabled
 
+    async def release_timed_out_run(self, run_id: str) -> None:
+        """Permit a new official attempt after a durable timeout verdict."""
+
+        try:
+            job = await self._runner.load_job(run_id)
+            if job is not None:
+                await self._runner.release_deduplication(job)
+        except RunnerStorageError as exc:
+            raise RunnerUnavailable("Runner retry state is unavailable.") from exc
+
     async def enqueue_for_request(
         self, stored: StoredRoom, command: RequestOfficialTestRun, now: datetime
     ) -> RunnerEnqueueReceipt:

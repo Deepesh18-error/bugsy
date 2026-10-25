@@ -17,6 +17,7 @@ from app.realtime.connection_manager import RoomConnectionManager
 from app.realtime.coordinator import RoomCoordinator
 from app.realtime.deadline_scheduler import DeadlineScheduler
 from app.realtime.match_setup import MatchSetupPolicy
+from app.realtime.recovery_worker import RecoveryWorker
 from app.rooms.redis_repository import RedisRoomRepository
 from app.rooms.service import RoomPolicy, RoomService
 from app.runner.redis_repository import RedisRunnerRepository
@@ -101,18 +102,29 @@ async def lifespan(app: FastAPI):
         automatic_test_debounce_seconds=float(
             os.getenv("CODEMAFIA_AUTO_TEST_DEBOUNCE_SECONDS", "1.0")
         ),
+        reconnect_grace_seconds=int(os.getenv("CODEMAFIA_RECONNECT_GRACE_SECONDS", "60")),
     )
     deadline_stop = asyncio.Event()
     deadline_task: asyncio.Task[None] | None = None
     result_stop = asyncio.Event()
     result_task: asyncio.Task[None] | None = None
+    recovery_stop = asyncio.Event()
+    recovery_task: asyncio.Task[None] | None = None
     try:
+        await app.state.room_coordinator.recover_orphaned_connections()
         await repository.rebuild_game_deadline_index()
         deadline_task = asyncio.create_task(
             DeadlineScheduler(repository, app.state.room_coordinator).run(deadline_stop),
             name="game-deadline-worker",
         )
         if signing_key:
+            recovery_task = asyncio.create_task(
+                RecoveryWorker(
+                    repository, app.state.room_coordinator,
+                    runner_timeout_seconds=int(os.getenv("CODEMAFIA_RUNNER_RESULT_TIMEOUT_SECONDS", "45")),
+                ).run(recovery_stop),
+                name="runner-recovery-worker",
+            )
             result_processor = RunnerResultProcessor(
                 repository,
                 runner_repository,
@@ -128,9 +140,10 @@ async def lifespan(app: FastAPI):
     finally:
         deadline_stop.set()
         result_stop.set()
+        recovery_stop.set()
         try:
             await app.state.room_coordinator.close()
-            tasks = [task for task in (deadline_task, result_task) if task is not None]
+            tasks = [task for task in (deadline_task, result_task, recovery_task) if task is not None]
             for task in tasks:
                 task.cancel()
             if tasks:

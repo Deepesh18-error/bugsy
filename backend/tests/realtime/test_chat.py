@@ -167,7 +167,7 @@ class ChatTests(unittest.TestCase):
             "INVALID_MESSAGE", "INVALID_MESSAGE", "INVALID_MESSAGE",
         ])
         self.assertEqual(repository.stored.state.chat_messages, ())
-        self.assertEqual(repository.stored.sequence, 0)
+        self.assertEqual(repository.stored.sequence, 1)  # Final socket loss is recorded.
 
     def test_sixth_message_in_ten_seconds_is_rejected(self) -> None:
         repository = FakeRepository()
@@ -179,7 +179,7 @@ class ChatTests(unittest.TestCase):
         errors = [item for item in socket.sent if item.get("type") == "error"]
         self.assertEqual(len(chat_events), 5)
         self.assertEqual(len(repository.stored.state.chat_messages), 5)
-        self.assertEqual(repository.stored.sequence, 5)
+        self.assertEqual(repository.stored.sequence, 6)
         self.assertEqual(errors[-1]["code"], RejectionCode.CHAT_RATE_LIMITED.value)
 
     def test_repeated_request_id_does_not_duplicate_chat_history(self) -> None:
@@ -190,8 +190,8 @@ class ChatTests(unittest.TestCase):
         ])
 
         self.assertEqual(len(repository.stored.state.chat_messages), 1)
-        self.assertEqual(repository.stored.sequence, 1)
-        self.assertEqual(repository.commits, 1)
+        self.assertEqual(repository.stored.sequence, 2)
+        self.assertEqual(len(repository.receipts), 1)
         self.assertEqual([item["type"] for item in socket.sent], [
             "snapshot", "event", "ack", "ack",
         ])

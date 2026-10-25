@@ -46,6 +46,7 @@ Service errors use `{"error":{"code":"...","message":"..."}}`:
 | HTTP | Typical code | Meaning |
 | --- | --- | --- |
 | `401` | `SESSION_INVALID` | Missing, revoked, or expired reconnect credential. |
+| `401` | `RECONNECT_GRACE_EXPIRED` | The guest returned after their reconnect window. |
 | `404` | `ROOM_UNAVAILABLE` | Invalid, missing, expired, or closed code share this response. |
 | `409` | `ROOM_FULL`, `NAME_TAKEN`, `ROOM_NOT_JOINABLE`, `ROOM_BUSY` | A valid room cannot accept this join or concurrent updates require retry. |
 | `422` | FastAPI validation detail | Invalid JSON, name, or capacity. |
@@ -77,15 +78,12 @@ before release.
   If Redis data is lost, the room and session are gone; the player must create
   or join again. If Redis is unavailable, room requests return `503`; the UI
   keeps the current room visible and offers another attempt.
-- This phase has one API process as the room writer. The Redis compare-and-swap
-  prevents lost room writes, but it is not a claim that deadlines, WebSocket
-  fan-out, or multi-instance matchmaking are implemented. Those come later.
+- This release has one API process as the room writer. Redis compare-and-swap
+  prevents lost room writes, and the deadline worker rebuilds its index on
+  startup. Reconnect and outage policy is specified in `docs/recovery.md`.
 
-The live lobby shows real membership. It has a manual **Refresh players**
-action because WebSocket live updates are part of the next phase. Ready/start
-remain unavailable there until server-authoritative actions are connected.
-The separate local match preview still demonstrates the Phase 2 screens; its
-players and game outcomes are simulated.
+The live lobby receives WebSocket snapshots and server-authorized ready/start
+actions. The separate local match preview remains simulated.
 
 ## Local run
 

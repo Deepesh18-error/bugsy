@@ -19,6 +19,8 @@ class RoomConnection:
     room_code: str
     player_id: str
     credential: str | None = None
+    ready: bool = True
+    pending_sequence: int = -1
     send_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
     async def send(self, payload: dict[str, object]) -> None:
@@ -34,8 +36,9 @@ class RoomConnectionManager:
         self._connections: dict[str, dict[str, set[RoomConnection]]] = {}
         self._authenticate = authenticate
 
-    def register(self, room_code: str, player_id: str, socket: WebSocket, credential: str | None = None) -> RoomConnection:
-        connection = RoomConnection(socket, room_code, player_id, credential)
+    def register(self, room_code: str, player_id: str, socket: WebSocket, credential: str | None = None,
+                 *, ready: bool = True) -> RoomConnection:
+        connection = RoomConnection(socket, room_code, player_id, credential, ready=ready)
         self._connections.setdefault(room_code, {}).setdefault(player_id, set()).add(connection)
         return connection
 
@@ -51,17 +54,33 @@ class RoomConnectionManager:
         if not room:
             del self._connections[connection.room_code]
 
+    def has_connections(self, room_code: str, player_id: str) -> bool:
+        return bool(self._connections.get(room_code, {}).get(player_id))
+
+    def activate(self, connection: RoomConnection) -> int:
+        """Enable events after the first authorized snapshot is sent."""
+
+        connection.ready = True
+        return connection.pending_sequence
+
     async def _deliver(self, recipients: tuple[RoomConnection, ...], event: ServerEvent) -> None:
         payload = event.model_dump(mode="json")
         for connection in recipients:
             try:
+                if not connection.ready:
+                    connection.pending_sequence = max(connection.pending_sequence, event.sequence)
+                    continue
                 if self._authenticate is not None:
                     guest = await self._authenticate(connection.credential)
                     if guest.state.room_code != connection.room_code or guest.player_id != connection.player_id:
                         self.unregister(connection)
                         continue
                 await asyncio.wait_for(connection.send(payload), timeout=3)
-            except (asyncio.TimeoutError, RuntimeError, OSError, WebSocketDisconnect, RoomServiceError, RoomStorageError):
+            except RoomStorageError:
+                # A temporary Redis outage does not mean this socket or guest
+                # has departed. The next snapshot recovers missed events.
+                continue
+            except (asyncio.TimeoutError, RuntimeError, OSError, WebSocketDisconnect, RoomServiceError):
                 self.unregister(connection)
 
     async def broadcast(self, room_code: str, event: ServerEvent) -> None:

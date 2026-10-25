@@ -58,7 +58,8 @@ export default function LiveArena({ room, role, categoryName, roundNumber, total
     id: ownPlayer?.id, name: ownPlayer?.name,
     color: '#73d5b3',
   }), [ownPlayer?.id, ownPlayer?.name]);
-  const editor = useCollaborativeEditor(session, participant, Boolean(session));
+  const editor = useCollaborativeEditor(session, participant,
+    Boolean(session) && connectionStatus === 'connected');
   const { feedback: provisional, run: runProvisional } = useCodeFeedback(
     `${room.code}:${roundNumber}`, source, feedbackBundle?.tests,
   );

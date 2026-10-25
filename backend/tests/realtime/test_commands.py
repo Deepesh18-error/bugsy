@@ -27,16 +27,16 @@ class CommandTests(unittest.TestCase):
         players = {item.player_id: item for item in repository.stored.state.players}
         self.assertFalse(players["player-1"].is_ready)
         self.assertTrue(players["player-2"].is_ready)
-        self.assertEqual(repository.commits, 1)
+        self.assertEqual(repository.commits, 2)  # Command, then transport disconnect.
         self.assertEqual([item["type"] for item in socket.sent], ["snapshot", "event", "ack"])
-        self.assertEqual(socket.sent[-1]["sequence"], repository.stored.sequence)
+        self.assertEqual(socket.sent[-1]["sequence"], repository.stored.sequence - 1)
         self.assertEqual(socket.sent[1]["payload"]["player_id"], "player-2")
 
     def test_spoofed_player_field_is_rejected_without_reaching_engine(self) -> None:
         repository = FakeRepository()
         socket = self.run_commands(repository, [command("r1", {"name": "set_ready", "ready": True}, player_id="player-1")])
         self.assertEqual(socket.sent[1]["code"], "INVALID_MESSAGE")
-        self.assertEqual(repository.commits, 0)
+        self.assertEqual(repository.receipts, {})
 
     def test_valid_command_in_wrong_phase_is_rejected_without_state_change(self) -> None:
         room = replace(
@@ -46,9 +46,11 @@ class CommandTests(unittest.TestCase):
         repository = FakeRepository(room)
         socket = self.run_commands(repository, [command("r1", {"name": "set_ready", "ready": True})])
         self.assertEqual(socket.sent[1]["code"], "wrong_phase")
-        self.assertEqual(repository.stored.state, room)
-        self.assertEqual(repository.stored.sequence, 0)
-        self.assertEqual(repository.commits, 1)  # The rejection receipt is durable.
+        self.assertEqual(repository.stored.state.phase, room.phase)
+        self.assertEqual(repository.stored.state.phase_deadline, room.phase_deadline)
+        self.assertEqual(repository.stored.state.players[1].connection.value, "disconnected")
+        self.assertEqual(repository.stored.sequence, 1)
+        self.assertEqual(repository.commits, 2)  # Rejection receipt and disconnect.
 
     def test_retry_returns_saved_ack_without_applying_action_twice(self) -> None:
         repository = FakeRepository()
@@ -57,7 +59,7 @@ class CommandTests(unittest.TestCase):
             command("r1", {"name": "set_ready", "ready": True}),
             command("r1", {"name": "set_ready", "ready": False}),
         ])
-        self.assertEqual(repository.commits, 1)
+        self.assertEqual(len(repository.receipts), 1)
         self.assertEqual([item["type"] for item in socket.sent], ["snapshot", "event", "ack", "ack", "error"])
         self.assertEqual(socket.sent[2]["sequence"], socket.sent[3]["sequence"])
         self.assertEqual(socket.sent[4]["code"], "DUPLICATE_REQUEST")

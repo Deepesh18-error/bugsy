@@ -96,6 +96,7 @@ export default function App() {
   const [initialLiveSnapshot, setInitialLiveSnapshot] = useState(null);
   const [isRestoring, setIsRestoring] = useState(true);
   const [restoreError, setRestoreError] = useState('');
+  const [canRetryResume, setCanRetryResume] = useState(true);
   const [isLobbyBusy, setIsLobbyBusy] = useState(false);
   const [isCategorySubmitting, setIsCategorySubmitting] = useState(false);
   const [categoryVoteMessage, setCategoryVoteMessage] = useState('');
@@ -236,7 +237,10 @@ export default function App() {
       setRoomMode('live');
       setScreen('lobby');
     }).catch((error) => {
-      if (active && error.code !== 'SESSION_INVALID') setRestoreError(error.message);
+      if (active && error.code !== 'SESSION_INVALID') {
+        setRestoreError(error.message);
+        setCanRetryResume(!['RECONNECT_GRACE_EXPIRED', 'ROOM_UNAVAILABLE'].includes(error.code));
+      }
     }).finally(() => {
       if (active) setIsRestoring(false);
     });
@@ -246,6 +250,7 @@ export default function App() {
   async function handleRetryResume() {
     setIsRestoring(true);
     setRestoreError('');
+    setCanRetryResume(true);
     try {
       const snapshot = await resumeRoom();
       setRoom(toLobbyView(snapshot));
@@ -253,7 +258,10 @@ export default function App() {
       setRoomMode('live');
       setScreen('lobby');
     } catch (error) {
-      if (error.code !== 'SESSION_INVALID') setRestoreError(error.message);
+      if (error.code !== 'SESSION_INVALID') {
+        setRestoreError(error.message);
+        setCanRetryResume(!['RECONNECT_GRACE_EXPIRED', 'ROOM_UNAVAILABLE'].includes(error.code));
+      }
     } finally {
       setIsRestoring(false);
     }
@@ -664,6 +672,8 @@ export default function App() {
   function resetToWelcome() {
     setRoom(null);
     setRoomMode(null);
+    setRestoreError('');
+    setCanRetryResume(true);
     setInitialLiveSnapshot(null);
     setLiveCategoryResult(null);
     previousLivePlayers.current = null;
@@ -711,6 +721,21 @@ export default function App() {
   }
 
   if (roomMode === 'live' && room) {
+    if (liveSocket.status !== 'connected') {
+      const sessionEnded = liveSocket.status === 'expired';
+      return (
+        <main style={{ maxWidth: 560, margin: '4rem auto', padding: '1.5rem' }}>
+          <h1>{sessionEnded ? 'Room session ended' : 'Restoring your match'}</h1>
+          <StatusMessage status={sessionEnded || liveSocket.status === 'error' ? 'error' : 'reconnecting'}>
+            {liveSocket.error || (liveSocket.status === 'synchronizing'
+              ? 'Checking the latest room state…'
+              : 'Reconnecting and loading the current round…')}
+          </StatusMessage>
+          {liveSocket.status === 'error' && <button type="button" onClick={liveSocket.retryConnection}>Try reconnecting</button>}
+          {sessionEnded && <button type="button" onClick={resetToWelcome}>Return to welcome</button>}
+        </main>
+      );
+    }
     const phase = liveRoomSnapshot?.phase ?? room.phase;
     const liveResult = liveCategoryResult?.roomCode === room.code ? liveCategoryResult : null;
     const liveSelectedCategory = LIVE_CATEGORIES.find(
@@ -982,6 +1007,7 @@ export default function App() {
       onJoinRoom={handleJoinRoom}
       onPreview={handlePreview}
       restoreError={restoreError}
+      canRetryResume={canRetryResume}
       onRetryResume={handleRetryResume}
       isRestoring={isRestoring}
     />

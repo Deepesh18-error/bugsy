@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import re
 import secrets
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from typing import Callable
 
@@ -79,6 +79,10 @@ def _unavailable() -> RoomServiceError:
 
 def _invalid_session() -> RoomServiceError:
     return RoomServiceError("SESSION_INVALID", "Guest session is invalid or expired.", 401)
+
+
+def _expired_grace() -> RoomServiceError:
+    return RoomServiceError("RECONNECT_GRACE_EXPIRED", "The reconnect window has ended.", 401)
 
 
 def _checked_credential_hash(credential: str | None) -> str:
@@ -169,20 +173,9 @@ class RoomService:
             player_id = new_player_id()
             while any(item.player_id == player_id for item in room.players):
                 player_id = new_player_id()
-            updated = RoomState(
-                room_code=room.room_code,
-                host_player_id=room.host_player_id,
-                players=(*room.players, PlayerState(
-                    player_id=player_id, display_name=name, joined_at=now,
-                )),
-                created_at=room.created_at,
-                expires_at=room.expires_at,
-                phase=room.phase,
-                capacity=room.capacity,
-                phase_deadline=room.phase_deadline,
-                match=room.match,
-                is_closed=room.is_closed,
-            )
+            updated = replace(room, players=(*room.players, PlayerState(
+                player_id=player_id, display_name=name, joined_at=now,
+            )))
             credential = new_reconnect_credential()
             session = self._session(updated, player_id, credential, now)
             if await self._repository.compare_and_swap(
@@ -206,14 +199,18 @@ class RoomService:
                 raise _invalid_session()
             room = stored.state
             player = next((item for item in room.players if item.player_id == session.player_id), None)
-            if player is None or player.connection is ConnectionStatus.DEPARTED:
+            if player is None:
                 await self._repository.revoke_session(digest)
                 raise _invalid_session()
+            if player.connection is ConnectionStatus.DEPARTED:
+                await self._repository.revoke_session(digest)
+                raise _expired_grace()
             if player.connection is ConnectionStatus.DISCONNECTED:
+                if player.reconnect_deadline is None or now >= player.reconnect_deadline.due_at:
+                    raise _expired_grace()
                 restored = restore_player_connection(room, player.player_id, now)
                 if not isinstance(restored, TransitionAccepted):
-                    await self._repository.revoke_session(digest)
-                    raise _invalid_session()
+                    raise _expired_grace()
                 room = restored.state
             replacement = new_reconnect_credential()
             new_session = self._session(room, player.player_id, replacement, now)
@@ -240,8 +237,14 @@ class RoomService:
             (item for item in stored.state.players if item.player_id == session.player_id),
             None,
         )
-        if player is None or player.connection is ConnectionStatus.DEPARTED:
+        if player is None:
             raise _invalid_session()
+        if player.connection is ConnectionStatus.DEPARTED:
+            raise _expired_grace()
+        if player.connection is ConnectionStatus.DISCONNECTED and (
+            player.reconnect_deadline is None or now >= player.reconnect_deadline.due_at
+        ):
+            raise _expired_grace()
         return AuthenticatedGuest(
             state=stored.state,
             player_id=session.player_id,

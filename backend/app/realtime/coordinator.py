@@ -18,14 +18,15 @@ from app.game.commands import (
     SetReady, StartMatch, StartNextRound,
 )
 from app.game.idempotency import command_fingerprint, durable_receipt_is_live
-from app.game.models import DeadlineKind, GamePhase, OfficialRunStatus
+from app.game.models import ConnectionStatus, DeadlineKind, GameDeadline, GamePhase, OfficialRunStatus
 from app.game.outcomes import RejectionCode, TransitionAccepted, TransitionRejected
 from app.game.randomness import ChoiceSource, SecureChoiceSource
 from app.game.transitions import (
-    apply_command, process_deadline, record_source_revision,
-    record_official_run_status, start_coding_round,
+    apply_command, expire_reconnect_grace, mark_player_disconnected,
+    process_deadline, record_source_revision, record_official_run_status,
+    restore_player_connection, start_coding_round,
 )
-from app.rooms.repository import CommandReceipt, RoomRepository, editor_document_id
+from app.rooms.repository import CommandReceipt, RoomRepository, RoomStorageError, editor_document_id
 from app.rooms.service import AuthenticatedGuest
 from app.realtime.connection_manager import RoomConnectionManager
 from app.realtime.deadline_scheduler import DeadlineAttempt
@@ -83,6 +84,7 @@ class RoomCoordinator:
         setup_policy: MatchSetupPolicy | None = None,
         runner_service: RunnerService | None = None,
         automatic_test_debounce_seconds: float = 1.0,
+        reconnect_grace_seconds: int = 60,
     ) -> None:
         if (
             isinstance(automatic_test_debounce_seconds, bool)
@@ -97,6 +99,9 @@ class RoomCoordinator:
         self._setup_policy = setup_policy or MatchSetupPolicy()
         self._runner_service = runner_service
         self._automatic_test_debounce_seconds = automatic_test_debounce_seconds
+        if type(reconnect_grace_seconds) is not int or reconnect_grace_seconds <= 0:
+            raise ValueError("Reconnect grace must be a positive number of seconds.")
+        self._reconnect_grace_seconds = reconnect_grace_seconds
         self._local_chat_windows: dict[tuple[str, str], dict[str, datetime]] = {}
         self._locks: dict[str, asyncio.Lock] = {}
         self._automatic_test_tasks: dict[str, asyncio.Task[None]] = {}
@@ -116,6 +121,128 @@ class RoomCoordinator:
             task.cancel()
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
+
+    async def mark_disconnected(self, room_code: str, player_id: str) -> None:
+        """Persist the last socket's loss; the player remains eligible to return."""
+
+        lock = self._locks.setdefault(room_code, asyncio.Lock())
+        async with lock:
+            for _ in range(8):
+                if self._connections.has_connections(room_code, player_id):
+                    return
+                stored = await self._repository.load_room(room_code)
+                now = datetime.now(timezone.utc)
+                if stored is None or stored.state.is_closed or now >= stored.state.expires_at:
+                    return
+                player = next((item for item in stored.state.players if item.player_id == player_id), None)
+                if player is None or player.connection is not ConnectionStatus.CONNECTED:
+                    return
+                deadline = GameDeadline(
+                    f"reconnect-{uuid4().hex}", DeadlineKind.RECONNECT_GRACE,
+                    min(now + timedelta(seconds=self._reconnect_grace_seconds), stored.state.expires_at),
+                )
+                if deadline.due_at <= now:
+                    return
+                outcome = mark_player_disconnected(stored.state, player_id, deadline, now)
+                if not isinstance(outcome, TransitionAccepted):
+                    return
+                sequence = stored.sequence + 1
+                projected = tuple(project_event(event, sequence) for event in outcome.events)
+                if await self._repository.compare_and_swap(stored, outcome.state, advance_sequence=True):
+                    await self._publish(room_code, projected)
+                    return
+            raise RoomStorageError("Could not persist the room disconnect.")
+
+    async def restore_connection(self, room_code: str, player_id: str) -> bool:
+        """Return false when the guest has departed or their grace has elapsed."""
+
+        lock = self._locks.setdefault(room_code, asyncio.Lock())
+        async with lock:
+            for _ in range(8):
+                stored = await self._repository.load_room(room_code)
+                now = datetime.now(timezone.utc)
+                if stored is None or stored.state.is_closed or now >= stored.state.expires_at:
+                    return False
+                player = next((item for item in stored.state.players if item.player_id == player_id), None)
+                if player is None or player.connection is ConnectionStatus.DEPARTED:
+                    return False
+                if player.connection is ConnectionStatus.CONNECTED:
+                    return True
+                outcome = restore_player_connection(stored.state, player_id, now)
+                if not isinstance(outcome, TransitionAccepted):
+                    return False
+                sequence = stored.sequence + 1
+                projected = tuple(project_event(event, sequence) for event in outcome.events)
+                if await self._repository.compare_and_swap(stored, outcome.state, advance_sequence=True):
+                    await self._publish(room_code, projected)
+                    return True
+            raise RoomStorageError("Could not persist the room reconnect.")
+
+    async def recover_orphaned_connections(self) -> None:
+        """After process restart, no earlier process sockets can still be live."""
+
+        for room_code in await self._repository.list_room_codes():
+            stored = await self._repository.load_room(room_code)
+            if stored is None:
+                continue
+            for player in stored.state.players:
+                if player.connection is ConnectionStatus.CONNECTED:
+                    await self.mark_disconnected(room_code, player.player_id)
+
+    async def expire_stale_official_runs(self, room_code: str, *, timeout_seconds: int) -> int:
+        """Turn abandoned runner work into a retryable, visible error."""
+
+        if type(timeout_seconds) is not int or timeout_seconds <= 0:
+            raise ValueError("Runner timeout must be a positive number of seconds.")
+        lock = self._locks.setdefault(room_code, asyncio.Lock())
+        async with lock:
+            for _ in range(8):
+                stored = await self._repository.load_room(room_code)
+                now = datetime.now(timezone.utc)
+                if (stored is None or stored.state.is_closed or now >= stored.state.expires_at
+                    or stored.state.phase not in {
+                        GamePhase.CODING_ROUND, GamePhase.MEETING_DISCUSSION, GamePhase.PLAYER_VOTE,
+                    }):
+                    return 0
+                match = stored.state.match
+                current = match.current_round if match is not None else None
+                if current is None:
+                    return 0
+                timed_out = tuple(progress for progress in current.official_run_progress
+                    if progress.status in {OfficialRunStatus.QUEUED, OfficialRunStatus.RUNNING}
+                    and now - progress.requested_at >= timedelta(seconds=timeout_seconds))
+                if not timed_out:
+                    return 0
+                updated = stored.state
+                events = []
+                for progress in timed_out:
+                    outcome = record_official_run_status(
+                        updated, round_number=current.number, run_id=progress.run_id,
+                        source_revision_id=progress.source_revision_id,
+                        status=OfficialRunStatus.ERROR, now=now,
+                    )
+                    if isinstance(outcome, TransitionAccepted):
+                        updated = outcome.state
+                        events.extend(outcome.events)
+                if updated == stored.state:
+                    return 0
+                sequence = stored.sequence + 1
+                projected = tuple(project_event(event, sequence) for event in events)
+                if not await self._repository.compare_and_swap(
+                    stored, updated, advance_sequence=bool(events),
+                ):
+                    continue
+                await self._publish(room_code, projected)
+                if self._runner_service is not None:
+                    for progress in timed_out:
+                        try:
+                            await self._runner_service.release_timed_out_run(progress.run_id)
+                        except RunnerUnavailable:
+                            # The saved error is authoritative; the next manual
+                            # retry will also release this job's dedupe key.
+                            pass
+                return len(timed_out)
+            return 0
 
     async def dispatch(self, guest: AuthenticatedGuest, message: ClientCommand) -> ServerAcknowledgment | ServerError:
         room_code = guest.state.room_code
@@ -359,6 +486,25 @@ class RoomCoordinator:
                 now = datetime.now(timezone.utc)
                 if stored is None or stored.state.is_closed or now >= stored.state.expires_at:
                     return DeadlineAttempt.STALE
+                reconnecting = next((player for player in stored.state.players
+                    if player.reconnect_deadline is not None
+                    and player.reconnect_deadline.deadline_id == deadline_id), None)
+                if reconnecting is not None:
+                    if now < reconnecting.reconnect_deadline.due_at:
+                        return DeadlineAttempt.NOT_DUE
+                    outcome = expire_reconnect_grace(
+                        stored.state, reconnecting.player_id, deadline_id, now,
+                    )
+                    if not isinstance(outcome, TransitionAccepted):
+                        return DeadlineAttempt.RETRY
+                    sequence = stored.sequence + 1
+                    projected = tuple(project_event(event, sequence) for event in outcome.events)
+                    if not await self._repository.compare_and_swap(
+                        stored, outcome.state, advance_sequence=True,
+                    ):
+                        continue
+                    await self._publish(room_code, projected)
+                    return DeadlineAttempt.COMMITTED
                 deadline = stored.state.phase_deadline
                 if (deadline is None or deadline.deadline_id != deadline_id
                     or stored.state.phase not in {

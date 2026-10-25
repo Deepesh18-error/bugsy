@@ -3,10 +3,12 @@ import { RoomSocket, RoomSocketError } from '../api/roomSocket.js';
 
 const HEARTBEAT_MS = 25_000;
 const MAX_RECONNECT_MS = 10_000;
+const MAX_RECONNECT_ATTEMPTS = 12;
 const FATAL_CLOSE_CODES = new Set([1002, 1003, 1008, 1009]);
 
 export default function useRoomSocket(roomCode) {
   const socketRef = useRef(null);
+  const retryRef = useRef(null);
   const [status, setStatus] = useState('idle');
   const [snapshot, setSnapshot] = useState(null);
   const [lastEvent, setLastEvent] = useState(null);
@@ -46,11 +48,21 @@ export default function useRoomSocket(roomCode) {
       client.close();
     }
 
+    function scheduleReconnect() {
+      attempts += 1;
+      if (attempts > MAX_RECONNECT_ATTEMPTS) {
+        setStatus('error');
+        setError('Could not reconnect to the room. Check the server and try again.');
+        return;
+      }
+      setStatus('reconnecting');
+      reconnectTimer = window.setTimeout(connect, Math.min(MAX_RECONNECT_MS, 1000 * 2 ** (attempts - 1)));
+    }
+
     const client = new RoomSocket({
       onOpen: () => {
         if (!active) return;
-        attempts = 0;
-        setStatus('connected');
+        setStatus('synchronizing');
         setError('');
         clearInterval(heartbeatTimer);
         heartbeatTimer = window.setInterval(() => client.sendPing(), HEARTBEAT_MS);
@@ -59,16 +71,19 @@ export default function useRoomSocket(roomCode) {
         if (!active) return;
         clearInterval(heartbeatTimer);
         if (FATAL_CLOSE_CODES.has(event.code)) {
-          setStatus('error');
-          setError(event.code === 1008
-            ? 'Your room session is no longer valid. Join again with the room code.'
-            : 'The room connection is incompatible with this client.');
+          const sessionExpired = event.code === 1008
+            && /session|reconnect grace|room access/i.test(event.reason || '');
+          setStatus(sessionExpired ? 'expired' : 'error');
+          setSnapshot(null);
+          setError(sessionExpired
+            ? 'Your room session has ended. Create or join another room.'
+            : event.code === 1008
+              ? 'The room server closed this connection after a policy limit.'
+              : 'The room connection is incompatible with this client.');
           client.close();
           return;
         }
-        setStatus('reconnecting');
-        attempts += 1;
-        reconnectTimer = window.setTimeout(connect, Math.min(MAX_RECONNECT_MS, 1000 * 2 ** (attempts - 1)));
+        scheduleReconnect();
       },
       onProtocolError: (protocolError) => failProtocol(protocolError.message),
       onMessage: (message) => {
@@ -81,6 +96,8 @@ export default function useRoomSocket(roomCode) {
           if (message.sequence >= snapshotSequence && message.sequence >= observedSequence) {
             snapshotSequence = message.sequence;
             setSnapshot(message.room);
+            setStatus('connected');
+            attempts = 0;
           }
           if (snapshotSequence >= observedSequence) {
             setHasSequenceGap(false);
@@ -103,15 +120,24 @@ export default function useRoomSocket(roomCode) {
       },
     });
     socketRef.current = client;
+    retryRef.current = () => {
+      if (client.disposed) {
+        window.location.reload();
+        return;
+      }
+      clearTimeout(reconnectTimer);
+      attempts = 0;
+      setError('');
+      setStatus('reconnecting');
+      connect();
+    };
 
     function connect() {
       if (!active) return;
       try {
         client.connect();
       } catch {
-        setStatus('reconnecting');
-        attempts += 1;
-        reconnectTimer = window.setTimeout(connect, Math.min(MAX_RECONNECT_MS, 1000 * 2 ** (attempts - 1)));
+        scheduleReconnect();
       }
     }
     connect();
@@ -121,6 +147,7 @@ export default function useRoomSocket(roomCode) {
       clearTimeout(reconnectTimer);
       clearInterval(heartbeatTimer);
       if (socketRef.current === client) socketRef.current = null;
+      retryRef.current = null;
       client.close();
     };
   }, [roomCode]);
@@ -133,5 +160,7 @@ export default function useRoomSocket(roomCode) {
 
   const requestSnapshot = useCallback(() => socketRef.current?.requestSnapshot() ?? false, []);
 
-  return { status, snapshot, lastEvent, lastOfficialResult, error, hasSequenceGap, sendCommand, requestSnapshot };
+  const retryConnection = useCallback(() => retryRef.current?.(), []);
+
+  return { status, snapshot, lastEvent, lastOfficialResult, error, hasSequenceGap, sendCommand, requestSnapshot, retryConnection };
 }

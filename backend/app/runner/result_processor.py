@@ -109,6 +109,13 @@ class RunnerResultProcessor:
                     or round_state.challenge_content_digest != job.challenge_content_digest
                 ):
                     return True
+                if any(
+                    progress.run_id == result.run_id
+                    and progress.status is OfficialRunStatus.ERROR
+                    for progress in round_state.official_run_progress
+                ):
+                    # A timed-out run cannot return later and alter a match.
+                    return True
                 if (
                     state.phase in {GamePhase.MEETING_DISCUSSION, GamePhase.PLAYER_VOTE}
                     and current is round_state

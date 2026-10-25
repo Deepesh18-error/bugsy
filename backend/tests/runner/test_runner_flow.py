@@ -13,7 +13,9 @@ from pydantic import ValidationError
 
 from app.api.schemas import build_room_response
 from app.game.commands import RequestOfficialTestRun
-from app.game.models import GamePhase, MatchEndReason, SabotageObjectiveProgress, TestPassEvidence
+from app.game.models import GamePhase, MatchEndReason, OfficialRunStatus, SabotageObjectiveProgress, TestPassEvidence
+from app.game.outcomes import TransitionAccepted
+from app.game.transitions import record_official_run_status
 from app.rooms.repository import StoredRoom
 from app.rooms.serialization import serialize_room
 from app.runner.contracts import (
@@ -134,6 +136,31 @@ class RunnerFlowTests(unittest.TestCase):
         self.assertEqual(snapshot.official_runs[-1].status.value, "error")
         self.assertIsNone(snapshot.official_result)
         self.assertIn(job.run_id, self.runner.released)
+
+    def test_signed_result_arriving_after_durable_timeout_is_ignored(self):
+        run_immediate(self.queue())
+        job = self.runner.job
+        queued = record_official_run_status(
+            self.rooms.stored.state, round_number=1, run_id=job.run_id,
+            source_revision_id=job.source_revision_id, status=OfficialRunStatus.QUEUED,
+            now=NOW, requested_by_player_id=job.requested_by_player_id,
+            requested_at=NOW,
+        )
+        self.assertIsInstance(queued, TransitionAccepted)
+        timed_out = record_official_run_status(
+            queued.state, round_number=1, run_id=job.run_id,
+            source_revision_id=job.source_revision_id, status=OfficialRunStatus.ERROR,
+            now=NOW + timedelta(seconds=1),
+        )
+        self.assertIsInstance(timed_out, TransitionAccepted)
+        state = timed_out.state
+        self.rooms.stored = StoredRoom(state, serialize_room(state), 0)
+
+        processor = RunnerResultProcessor(self.rooms, self.runner, self.connections, signing_key=KEY)
+        self.assertTrue(run_immediate(processor.process(signed_result(job))))
+        self.assertEqual(self.rooms.commits, 0)
+        self.assertIsNone(self.rooms.stored.state.match.current_round.official_test_result)
+        self.assertFalse(self.connections.public)
 
     def test_private_objective_description_is_only_in_impostor_snapshot(self):
         state = self.rooms.stored.state

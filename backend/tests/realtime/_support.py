@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 from app.api.websocket import RoomConnectionManager
 from app.game.models import PlayerState, RoomState
-from app.rooms.repository import CommandReceipt, StoredRoom
+from app.rooms.repository import CommandReceipt, GuestSession, StoredRoom
 from app.rooms.service import AuthenticatedGuest, RoomServiceError
 
 
@@ -109,9 +109,23 @@ class FakeRepository:
         self.receipts: dict[tuple[str, str, str], CommandReceipt] = {}
         self.commits = 0
         self.chat_windows: dict[tuple[str, str], dict[str, datetime]] = {}
+        self.sessions: dict[str, GuestSession] = {}
 
     async def load_room(self, room_code: str) -> StoredRoom | None:
         return self.stored if room_code == self.stored.state.room_code else None
+
+    async def list_room_codes(self) -> tuple[str, ...]:
+        return (self.stored.state.room_code,)
+
+    async def load_session(self, credential_hash: str) -> GuestSession | None:
+        return self.sessions.get(credential_hash)
+
+    async def revoke_session(self, credential_hash: str) -> None:
+        self.sessions.pop(credential_hash, None)
+
+    async def allow_join_attempt(self, subject_hash: str, *, window_seconds: int,
+                                 max_attempts: int) -> bool:
+        return True
 
     async def load_command_receipt(
         self, room_code: str, player_id: str, request_id: str
@@ -137,6 +151,8 @@ class FakeRepository:
     async def compare_and_swap(
         self, previous: StoredRoom, updated: RoomState, *,
         receipt: CommandReceipt | None = None, advance_sequence: bool = False,
+        new_session: GuestSession | None = None,
+        revoke_credential_hash: str | None = None,
         **_: object,
     ) -> bool:
         if previous.raw != self.stored.raw:
@@ -145,6 +161,10 @@ class FakeRepository:
         sequence = previous.sequence + int(advance_sequence)
         if receipt is not None:
             self.receipts[(previous.state.room_code, receipt.player_id, receipt.request_id)] = receipt
+        if new_session is not None:
+            self.sessions[new_session.credential_hash] = new_session
+        if revoke_credential_hash is not None:
+            self.sessions.pop(revoke_credential_hash, None)
         self.stored = replace(
             previous, state=updated, sequence=sequence,
             raw=f"revision-{self.commits}".encode(),

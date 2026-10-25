@@ -60,11 +60,11 @@ end
 if ARGV[8] == '1' then
     redis.call('SET', KEYS[4], ARGV[9], 'EX', tonumber(ARGV[10]))
 end
-if ARGV[11] ~= '' then
-    redis.call('ZREM', KEYS[5], ARGV[11])
+for _, member in ipairs(cjson.decode(ARGV[11])) do
+    redis.call('ZREM', KEYS[5], member)
 end
-if ARGV[12] ~= '' then
-    redis.call('ZADD', KEYS[5], tonumber(ARGV[13]), ARGV[12])
+for _, entry in ipairs(cjson.decode(ARGV[12])) do
+    redis.call('ZADD', KEYS[5], tonumber(entry[2]), entry[1])
 end
 return 1
 """
@@ -146,6 +146,19 @@ def _game_deadline_member(state: RoomState) -> tuple[str, float] | None:
     ):
         return None
     return _index_member(state.room_code, deadline.deadline_id), deadline.due_at.timestamp()
+
+
+def _indexed_deadlines(state: RoomState) -> tuple[tuple[str, float], ...]:
+    if state.is_closed:
+        return ()
+    phase = _game_deadline_member(state)
+    reconnects = tuple(
+        (_index_member(state.room_code, player.reconnect_deadline.deadline_id),
+         player.reconnect_deadline.due_at.timestamp())
+        for player in state.players
+        if player.reconnect_deadline is not None and player.connection.value == "disconnected"
+    )
+    return ((phase,) if phase is not None else ()) + reconnects
 
 
 def _index_member(room_code: str, deadline_id: str) -> str:
@@ -292,8 +305,8 @@ class RedisRoomRepository:
             _receipt_key(updated.room_code, receipt.player_id, receipt.request_id)
             if receipt is not None else "codemafia:v1:unused:receipt"
         )
-        prior_deadline = _game_deadline_member(previous.state)
-        next_deadline = _game_deadline_member(updated)
+        prior_deadlines = _indexed_deadlines(previous.state)
+        next_deadlines = _indexed_deadlines(updated)
         try:
             result = await self._client.eval(
                 _COMPARE_AND_SWAP,
@@ -313,9 +326,8 @@ class RedisRoomRepository:
                 "1" if receipt else "0",
                 _receipt_value(receipt) if receipt else b"",
                 DEFAULT_REQUEST_ID_TTL_SECONDS,
-                prior_deadline[0] if prior_deadline else "",
-                next_deadline[0] if next_deadline else "",
-                next_deadline[1] if next_deadline else 0,
+                json.dumps([member for member, _ in prior_deadlines]),
+                json.dumps([[member, score] for member, score in next_deadlines]),
             )
             return result == 1
         except RedisError as exc:
@@ -406,11 +418,22 @@ class RedisRoomRepository:
                 stored = await self.load_room(room_code)
                 if stored is None:
                     continue
-                deadline = _game_deadline_member(stored.state)
-                if deadline is not None:
-                    await self._client.zadd(_CATEGORY_DEADLINE_INDEX, {deadline[0]: deadline[1]})
+                deadlines = _indexed_deadlines(stored.state)
+                if deadlines:
+                    await self._client.zadd(_CATEGORY_DEADLINE_INDEX, dict(deadlines))
         except RedisError as exc:
             raise RoomStorageError("Deadline index could not be rebuilt.") from exc
+        except UnicodeError as exc:
+            raise RoomStorageError("Stored room key is invalid.") from exc
+
+    async def list_room_codes(self) -> tuple[str, ...]:
+        try:
+            codes = []
+            async for raw_key in self._client.scan_iter(match="codemafia:v1:room:*"):
+                codes.append(raw_key.decode("ascii").removeprefix("codemafia:v1:room:"))
+            return tuple(codes)
+        except RedisError as exc:
+            raise RoomStorageError("Room listing is unavailable.") from exc
         except UnicodeError as exc:
             raise RoomStorageError("Stored room key is invalid.") from exc
 

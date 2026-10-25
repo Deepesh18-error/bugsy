@@ -4,7 +4,7 @@ import styles from '../styles/WelcomeScreen.module.css';
 
 const MAX_NAME_LENGTH = 24;
 
-export default function WelcomeScreen({ onCreateRoom, onJoinRoom, onPreview, restoreError, onRetryResume, isRestoring }) {
+export default function WelcomeScreen({ onCreateRoom, onJoinRoom, onPreview, restoreError, onRetryResume, canRetryResume = true, isRestoring }) {
   const [displayName, setDisplayName] = useState('');
   const [roomCode, setRoomCode] = useState('');
   const [nameError, setNameError] = useState('');
@@ -112,7 +112,7 @@ export default function WelcomeScreen({ onCreateRoom, onJoinRoom, onPreview, res
             {restoreError && (
               <p className={styles.errorText} role="alert">
                 {restoreError}{' '}
-                <button className={styles.retryButton} onClick={onRetryResume} type="button">Try reconnecting</button>
+                {canRetryResume && <button className={styles.retryButton} onClick={onRetryResume} type="button">Try reconnecting</button>}
               </p>
             )}
             <form aria-busy={Boolean(isSubmitting) || isRestoring} className={styles.entryForm} onSubmit={handleSubmit}>

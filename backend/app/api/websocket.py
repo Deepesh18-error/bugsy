@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from collections import deque
 import json
+import logging
 from time import monotonic
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
@@ -31,6 +32,7 @@ from app.realtime.snapshots import room_snapshot
 
 
 router = APIRouter(prefix="/api/rooms", tags=["rooms"])
+logger = logging.getLogger(__name__)
 IDLE_TIMEOUT_SECONDS = 90
 RATE_WINDOW_SECONDS = 10
 MAX_MESSAGES_PER_WINDOW = 40
@@ -71,11 +73,35 @@ async def room_websocket(socket: WebSocket) -> None:
 
     await socket.accept()
     manager: RoomConnectionManager = socket.app.state.room_connection_manager
-    connection = manager.register(guest.state.room_code, guest.player_id, socket, credential)
+    connection = None
     invalid_messages = 0
     received_at: deque[float] = deque()
     try:
+        coordinator = getattr(socket.app.state, "room_coordinator", None)
+        if coordinator is not None:
+            try:
+                if not await coordinator.restore_connection(guest.state.room_code, guest.player_id):
+                    await socket.close(code=1008, reason="Reconnect grace has expired.")
+                    return
+                guest = await socket.app.state.room_service.authenticate_player(credential)
+            except RoomServiceError:
+                await socket.close(code=1008, reason="Session is no longer valid.")
+                return
+            except RoomStorageError:
+                await socket.close(code=1013, reason="Room storage is unavailable.")
+                return
+        connection = manager.register(guest.state.room_code, guest.player_id, socket, credential, ready=False)
         await _snapshot(connection, guest)
+        if manager.activate(connection) > guest.sequence:
+            try:
+                guest = await socket.app.state.room_service.authenticate_player(credential)
+                await _snapshot(connection, guest)
+            except RoomServiceError:
+                await socket.close(code=1008, reason="Session is no longer valid.")
+                return
+            except RoomStorageError:
+                await socket.close(code=1013, reason="Room storage is unavailable.")
+                return
         while True:
             try:
                 frame = await asyncio.wait_for(
@@ -178,4 +204,13 @@ async def room_websocket(socket: WebSocket) -> None:
     except WebSocketDisconnect:
         pass
     finally:
-        manager.unregister(connection)
+        if connection is not None:
+            manager.unregister(connection)
+            coordinator = getattr(socket.app.state, "room_coordinator", None)
+            if coordinator is not None and not manager.has_connections(connection.room_code, connection.player_id):
+                try:
+                    await coordinator.mark_disconnected(connection.room_code, connection.player_id)
+                except RoomStorageError:
+                    # The stored player still has their credential. Startup recovery
+                    # handles process loss; a later reconnect can restore presence.
+                    logger.warning("Could not record a room disconnect while storage was unavailable.")
