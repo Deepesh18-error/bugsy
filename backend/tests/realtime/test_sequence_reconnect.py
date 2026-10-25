@@ -1,16 +1,63 @@
 """Reconnects start from an authorized snapshot and retries reuse receipts."""
 
 from dataclasses import replace
+from datetime import datetime, timedelta
 import unittest
 
 from app.api.websocket import room_websocket
+from app.game.commands import CastPlayerVote
+from app.game.models import (
+    DeadlineKind, GameDeadline, GamePhase, MatchState, PlayerState, RoundState,
+)
 from app.realtime.coordinator import RoomCoordinator
-from _support import DISCONNECT, FakeRepository, FakeService, FakeSocket, run_socket, text_frame
+from _support import DISCONNECT, NOW, FakeRepository, FakeService, FakeSocket, make_room, run_socket, text_frame
 
 
 def ready(request_id: str, value: bool = True) -> dict[str, object]:
     return {"version": 1, "type": "command", "request_id": request_id,
             "action": {"name": "set_ready", "ready": value}}
+
+
+def chat(request_id: str, message: str) -> dict[str, object]:
+    return {"version": 1, "type": "command", "request_id": request_id,
+            "action": {"name": "send_chat_message", "message": message}}
+
+
+def player_vote_room():
+    room = make_room()
+    players = (*room.players,
+               PlayerState("player-3", "Cam", NOW),
+               PlayerState("player-4", "Dee", NOW))
+    round_deadline = GameDeadline(
+        "coding-round-1", DeadlineKind.CODING_ROUND, NOW + timedelta(minutes=2)
+    )
+    current_round = RoundState(
+        number=1,
+        category_id="object-oriented",
+        challenge_id="oop.counter",
+        challenge_version="1.0.0",
+        challenge_content_digest="sha256:reconnect-fixture",
+        started_at=NOW - timedelta(minutes=1),
+        deadline=round_deadline,
+        current_source_revision_id="revision-1",
+    )
+    vote_deadline = GameDeadline(
+        "player-vote-1", DeadlineKind.PLAYER_VOTE, NOW + timedelta(seconds=30)
+    )
+    match = MatchState(
+        round_number=1,
+        selected_category_id="object-oriented",
+        current_round=current_round,
+        meeting_started_at=NOW - timedelta(seconds=5),
+        paused_round_deadline=round_deadline,
+    )
+    return replace(
+        room,
+        players=players,
+        phase=GamePhase.PLAYER_VOTE,
+        phase_deadline=vote_deadline,
+        match=match,
+    )
 
 
 class CurrentRoomService(FakeService):
@@ -67,3 +114,29 @@ class SequenceReconnectTests(unittest.TestCase):
         retry = self.connect([text_frame(ready("r1", False)), DISCONNECT])
         self.assertEqual(retry.sent[1]["code"], "DUPLICATE_REQUEST")
         self.assertEqual(self.repository.commits, 1)
+
+    def test_reconnect_snapshot_restores_bounded_chat_history(self) -> None:
+        original = self.connect([text_frame(chat("chat-1", "hello after reconnect")), DISCONNECT])
+        self.assertEqual(original.sent[-1]["type"], "ack")
+
+        reconnect = self.connect([DISCONNECT])
+        snapshot = reconnect.sent[0]["room"]
+        self.assertEqual(snapshot["chat_messages"][0]["message"], "hello after reconnect")
+        self.assertEqual(snapshot["chat_messages"][0]["display_name"], "Ben")
+        sent_at = datetime.fromisoformat(snapshot["chat_messages"][0]["sent_at"].replace("Z", "+00:00"))
+        self.assertIsNotNone(sent_at.tzinfo)
+
+    def test_reconnect_snapshot_restores_only_the_callers_ballot(self) -> None:
+        self.repository = FakeRepository(player_vote_room())
+        self.service = CurrentRoomService(self.repository)
+        self.connect([text_frame({
+            "version": 1,
+            "type": "command",
+            "request_id": "ballot-p2",
+            "action": {"name": "cast_player_vote", "target_player_id": "player-4"},
+        }), DISCONNECT])
+
+        reconnect = self.connect([DISCONNECT])
+        snapshot = reconnect.sent[0]["room"]
+        self.assertTrue(snapshot["has_cast_player_vote"])
+        self.assertEqual(snapshot["own_player_vote_target_id"], "player-4")

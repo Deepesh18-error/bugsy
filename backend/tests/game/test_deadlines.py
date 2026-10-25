@@ -115,6 +115,80 @@ class DeadlineTests(unittest.TestCase):
         caller = next(player for player in result.state.players if player.player_id == "p2")
         self.assertEqual(caller.emergency_meetings_used, 1)
 
+    def test_meeting_and_vote_duration_is_added_to_the_coding_deadline(self) -> None:
+        state = make_discussion_room(now=NOW)
+        meeting_started_at = state.match.meeting_started_at
+        original_round_deadline = state.match.paused_round_deadline.due_at
+        discussion_deadline = state.phase_deadline
+        vote_deadline = make_deadline(
+            "vote-after-discussion",
+            DeadlineKind.PLAYER_VOTE,
+            discussion_deadline.due_at + timedelta(seconds=20),
+        )
+
+        opened_vote = process_deadline(
+            state,
+            discussion_deadline.deadline_id,
+            discussion_deadline.due_at,
+            next_deadline=vote_deadline,
+        )
+        self.assertIsInstance(opened_vote, TransitionAccepted)
+
+        resolved_vote = process_deadline(
+            opened_vote.state, vote_deadline.deadline_id, vote_deadline.due_at
+        )
+
+        self.assertIsInstance(resolved_vote, TransitionAccepted)
+        self.assertEqual(resolved_vote.state.phase, GamePhase.CODING_ROUND)
+        expected_pause = vote_deadline.due_at - meeting_started_at
+        self.assertEqual(
+            resolved_vote.state.match.current_round.deadline.due_at,
+            original_round_deadline + expected_pause,
+        )
+        self.assertIsNone(resolved_vote.state.match.meeting_started_at)
+        self.assertIsNone(resolved_vote.state.match.paused_round_deadline)
+
+        repeated_discussion = process_deadline(
+            resolved_vote.state,
+            discussion_deadline.deadline_id,
+            vote_deadline.due_at + timedelta(seconds=1),
+        )
+        repeated_vote = process_deadline(
+            resolved_vote.state,
+            vote_deadline.deadline_id,
+            vote_deadline.due_at + timedelta(seconds=1),
+        )
+        self.assertIsInstance(repeated_discussion, TransitionRejected)
+        self.assertEqual(repeated_discussion.code, RejectionCode.STALE_DEADLINE)
+        self.assertIsInstance(repeated_vote, TransitionRejected)
+        self.assertEqual(repeated_vote.code, RejectionCode.STALE_DEADLINE)
+
+    def test_a_second_meeting_command_cannot_pause_the_round_twice(self) -> None:
+        state = make_coding_room(due_at=NOW + timedelta(seconds=60))
+        first = apply_command(
+            state,
+            CallEmergencyMeeting(request_id="meeting-first", player_id="p2"),
+            NOW,
+            next_deadline=make_deadline(
+                "discussion-first", DeadlineKind.MEETING_DISCUSSION, NOW + timedelta(seconds=15)
+            ),
+            meeting_cooldown_until=NOW + timedelta(seconds=45),
+        )
+        self.assertIsInstance(first, TransitionAccepted)
+        second = apply_command(
+            first.state,
+            CallEmergencyMeeting(request_id="meeting-second", player_id="p3"),
+            NOW + timedelta(seconds=1),
+            next_deadline=make_deadline(
+                "discussion-second", DeadlineKind.MEETING_DISCUSSION, NOW + timedelta(seconds=16)
+            ),
+            meeting_cooldown_until=NOW + timedelta(seconds=46),
+        )
+        self.assertIsInstance(second, TransitionRejected)
+        self.assertEqual(second.code, RejectionCode.WRONG_PHASE)
+        self.assertEqual(second.state.match.meeting_started_at, NOW)
+        self.assertEqual(second.state.match.paused_round_deadline, first.state.match.paused_round_deadline)
+
     def test_meeting_cannot_be_called_at_the_coding_deadline(self) -> None:
         due = NOW + timedelta(seconds=10)
         state = make_coding_room(due_at=due)

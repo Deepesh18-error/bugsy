@@ -4,12 +4,12 @@ from datetime import timedelta
 import unittest
 
 from app.game.commands import CastPlayerVote
-from app.game.events import PlayerBallotStored, PlayerVoteResolved
+from app.game.events import PlayerBallotStored, PlayerEliminated, PlayerVoteResolved
 from app.game.models import GamePhase
 from app.game.outcomes import RejectionCode, TransitionAccepted, TransitionRejected
 from app.game.transitions import apply_command, resolve_player_vote
 
-from _builders import NOW, make_voting_room
+from _builders import NOW, make_players, make_voting_room
 
 
 class VotingTests(unittest.TestCase):
@@ -134,6 +134,62 @@ class VotingTests(unittest.TestCase):
         self.assertIsNone(state.match.last_vote_result.ejected_player_id)
         self.assertTrue(state.match.last_vote_result.was_tie)
         self.assertEqual(state.match.last_vote_result.skip_count, 2)
+
+    def test_disconnected_player_cannot_vote_and_does_not_block_eligible_ballots(self) -> None:
+        state = make_voting_room(players=make_players(disconnected=frozenset({"p4"})))
+        disconnected_vote = apply_command(
+            state,
+            CastPlayerVote(request_id="offline-vote", player_id="p4", target_player_id="p1"),
+            NOW,
+        )
+        self.assertIsInstance(disconnected_vote, TransitionRejected)
+        self.assertEqual(disconnected_vote.code, RejectionCode.PLAYER_NOT_CONNECTED)
+
+        result = None
+        for index, (voter, target) in enumerate((("p1", "p2"), ("p2", "p2"), ("p3", "p1"))):
+            result = apply_command(
+                state,
+                CastPlayerVote(
+                    request_id=f"connected-vote-{index}",
+                    player_id=voter,
+                    target_player_id=target,
+                ),
+                NOW + timedelta(seconds=index),
+            )
+            self.assertIsInstance(result, TransitionAccepted)
+            state = result.state
+
+        self.assertEqual(result.state.phase, GamePhase.CODING_ROUND)
+        disconnected = next(player for player in result.state.players if player.player_id == "p4")
+        self.assertTrue(disconnected.is_alive)
+        self.assertEqual(disconnected.connection.value, "disconnected")
+        self.assertEqual(result.state.match.last_vote_result.ejected_player_id, "p2")
+
+    def test_impostor_is_ejected_once_and_match_ends(self) -> None:
+        state = make_voting_room()
+        result = None
+        ballots = (("p1", "p4"), ("p2", "p4"), ("p3", "p4"), ("p4", "p3"))
+        for index, (voter, target) in enumerate(ballots):
+            result = apply_command(
+                state,
+                CastPlayerVote(
+                    request_id=f"eject-{index}", player_id=voter, target_player_id=target
+                ),
+                NOW + timedelta(seconds=index),
+            )
+            self.assertIsInstance(result, TransitionAccepted)
+            state = result.state
+
+        self.assertEqual(result.state.phase, GamePhase.GAME_OVER)
+        self.assertEqual(result.state.match.result.winner.value, "civilians")
+        self.assertEqual(
+            sum(isinstance(event, PlayerEliminated) for event in result.events), 1
+        )
+        repeated = resolve_player_vote(
+            result.state, NOW + timedelta(seconds=10), deadline_id="vote-1"
+        )
+        self.assertIsInstance(repeated, TransitionRejected)
+        self.assertEqual(repeated.code, RejectionCode.WRONG_PHASE)
 
 
 if __name__ == "__main__":

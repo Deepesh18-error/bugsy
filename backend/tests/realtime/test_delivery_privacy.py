@@ -6,11 +6,12 @@ import unittest
 
 from app.challenges.loader import load_challenge
 from app.game.events import (
-    PlayerReadinessChanged, PlayerRoleAssigned, SabotageObjectiveVerified,
+    PlayerBallotStored, PlayerReadinessChanged, PlayerRoleAssigned,
+    PlayerVoteResolved, SabotageObjectiveVerified,
 )
 from app.game.models import (
     DeadlineKind, GameDeadline, GamePhase, MatchState, PlayerRole,
-    RoundState, SabotageObjectiveProgress,
+    RoundState, SabotageObjectiveProgress, Vote, VoteKind,
 )
 from app.realtime.connection_manager import RoomConnectionManager
 from app.realtime.snapshots import project_event, room_snapshot
@@ -54,6 +55,71 @@ class DeliveryPrivacyTests(unittest.TestCase):
         self.assertEqual([item["name"] for item in impostor.sent],
                          ["PlayerRoleAssigned", "SabotageObjectiveVerified"])
         self.assertNotIn("objective-1", repr(civilian.sent))
+
+    def test_ballot_event_is_private_and_only_resolution_aggregate_is_public(self) -> None:
+        manager = RoomConnectionManager()
+        players = [FakeSocket([]) for _ in range(3)]
+        for player_id, socket in zip(("player-1", "player-2", "player-3"), players):
+            manager.register("ABCDEFG2", player_id, socket)
+
+        recipient, private_ballot = project_event(PlayerBallotStored(
+            occurred_at=NOW,
+            request_id="ballot-request",
+            recipient_player_id="player-2",
+            is_skip=False,
+        ), 8)
+        self.assertEqual(recipient, "player-2")
+        self.assertEqual(private_ballot.payload, {"is_skip": False})
+        run_socket(manager.send_private("ABCDEFG2", recipient, private_ballot))
+        self.assertEqual([len(socket.sent) for socket in players], [0, 1, 0])
+
+        recipient, public_result = project_event(PlayerVoteResolved(
+            occurred_at=NOW,
+            request_id="ballot-request",
+            vote_counts=(("player-3", 2),),
+            skip_count=1,
+            ejected_player_id="player-3",
+            was_tie=False,
+        ), 9)
+        self.assertIsNone(recipient)
+        self.assertEqual(set(public_result.payload), {
+            "vote_counts", "skip_count", "ejected_player_id", "was_tie",
+        })
+        self.assertNotIn("voter_id", repr(public_result.payload))
+        run_socket(manager.broadcast("ABCDEFG2", public_result))
+        self.assertEqual([len(socket.sent) for socket in players], [1, 2, 1])
+        self.assertEqual(
+            players[0].sent[0]["payload"],
+            {"vote_counts": {"player-3": 2}, "skip_count": 1,
+             "ejected_player_id": "player-3", "was_tie": False},
+        )
+
+    def test_authorized_snapshot_restores_only_the_own_player_ballot(self) -> None:
+        room = make_room()
+        own_ballot = Vote(
+            kind=VoteKind.PLAYER,
+            voter_id="player-2",
+            target_id="player-1",
+            request_id="private-vote",
+            cast_at=NOW,
+        )
+        deadline = GameDeadline(
+            "player-vote-1", DeadlineKind.PLAYER_VOTE, NOW + timedelta(minutes=1)
+        )
+        voting = replace(
+            room,
+            phase=GamePhase.PLAYER_VOTE,
+            phase_deadline=deadline,
+            match=MatchState(player_votes=(own_ballot,)),
+        )
+        voter = room_snapshot(voting, "player-2", 4).model_dump(mode="json")["room"]
+        observer = room_snapshot(voting, "player-1", 4).model_dump(mode="json")["room"]
+
+        self.assertTrue(voter["has_cast_player_vote"])
+        self.assertEqual(voter["own_player_vote_target_id"], "player-1")
+        self.assertFalse(observer["has_cast_player_vote"])
+        self.assertIsNone(observer["own_player_vote_target_id"])
+        self.assertNotIn("player_votes", repr(voter))
 
     def test_snapshot_contains_only_the_recipients_private_state(self) -> None:
         room = make_room()

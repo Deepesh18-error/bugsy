@@ -108,6 +108,7 @@ class FakeRepository:
         self.stored = StoredRoom(room or make_room(), b"revision-0")
         self.receipts: dict[tuple[str, str, str], CommandReceipt] = {}
         self.commits = 0
+        self.chat_windows: dict[tuple[str, str], dict[str, datetime]] = {}
 
     async def load_room(self, room_code: str) -> StoredRoom | None:
         return self.stored if room_code == self.stored.state.room_code else None
@@ -116,6 +117,22 @@ class FakeRepository:
         self, room_code: str, player_id: str, request_id: str
     ) -> CommandReceipt | None:
         return self.receipts.get((room_code, player_id, request_id))
+
+    async def allow_chat_message(
+        self, room_code: str, player_id: str, request_id: str, now: datetime,
+        *, window_seconds: int, max_messages: int,
+    ) -> bool:
+        key = (room_code, player_id)
+        recent = {
+            identity: sent_at
+            for identity, sent_at in self.chat_windows.get(key, {}).items()
+            if (now - sent_at).total_seconds() < window_seconds
+        }
+        allowed = request_id in recent or len(recent) < max_messages
+        if allowed:
+            recent.setdefault(request_id, now)
+        self.chat_windows[key] = recent
+        return allowed
 
     async def compare_and_swap(
         self, previous: StoredRoom, updated: RoomState, *,
