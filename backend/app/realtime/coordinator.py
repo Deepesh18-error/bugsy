@@ -19,7 +19,7 @@ from app.game.commands import (
 )
 from app.game.idempotency import command_fingerprint, durable_receipt_is_live
 from app.game.models import DeadlineKind, GamePhase, OfficialRunStatus
-from app.game.outcomes import TransitionAccepted
+from app.game.outcomes import RejectionCode, TransitionAccepted, TransitionRejected
 from app.game.randomness import ChoiceSource, SecureChoiceSource
 from app.game.transitions import (
     apply_command, process_deadline, record_source_revision,
@@ -40,6 +40,11 @@ from app.realtime.match_setup import (
 )
 from app.realtime.snapshots import project_event
 from app.runner.service import RunnerQueueFull, RunnerService, RunnerUnavailable
+
+
+# One player may post at most five accepted room messages in any ten seconds.
+CHAT_RATE_WINDOW_SECONDS = 10
+CHAT_RATE_MAX_MESSAGES = 5
 
 
 def _game_command(message: ClientCommand, player_id: str):
@@ -92,6 +97,7 @@ class RoomCoordinator:
         self._setup_policy = setup_policy or MatchSetupPolicy()
         self._runner_service = runner_service
         self._automatic_test_debounce_seconds = automatic_test_debounce_seconds
+        self._local_chat_windows: dict[tuple[str, str], dict[str, datetime]] = {}
         self._locks: dict[str, asyncio.Lock] = {}
         self._automatic_test_tasks: dict[str, asyncio.Task[None]] = {}
 
@@ -260,6 +266,35 @@ class RoomCoordinator:
                                 message="Official tests are unavailable; please try again.",
                                 request_id=message.request_id,
                             )
+                if isinstance(command, SendChatMessage) and isinstance(outcome, TransitionAccepted):
+                    limiter = getattr(self._repository, "allow_chat_message", None)
+                    if limiter is None:
+                        # Small in-memory repositories used by local adapters may
+                        # not implement the Redis-backed policy. Production uses
+                        # the durable repository method below.
+                        key = (room_code, player_id)
+                        recent = {
+                            request_id: timestamp
+                            for request_id, timestamp in self._local_chat_windows.get(key, {}).items()
+                            if (now - timestamp).total_seconds() < 10
+                        }
+                        allowed = message.request_id in recent or len(recent) < 5
+                        if allowed:
+                            recent.setdefault(message.request_id, now)
+                        self._local_chat_windows[key] = recent
+                    else:
+                        allowed = await limiter(
+                            room_code, player_id, message.request_id, now,
+                            window_seconds=CHAT_RATE_WINDOW_SECONDS,
+                            max_messages=CHAT_RATE_MAX_MESSAGES,
+                        )
+                    if not allowed:
+                        outcome = TransitionRejected(
+                            state=stored.state,
+                            code=RejectionCode.CHAT_RATE_LIMITED,
+                            message="Please wait before sending another chat message.",
+                            request_id=message.request_id,
+                        )
                 if (
                     isinstance(command, CastCategoryVote)
                     and isinstance(outcome, TransitionAccepted)

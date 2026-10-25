@@ -212,6 +212,11 @@ class RoomRepository(Protocol):
         self, subject_hash: str, *, window_seconds: int, max_attempts: int
     ) -> bool: ...
 
+    async def allow_chat_message(
+        self, room_code: str, player_id: str, request_id: str, now: datetime,
+        *, window_seconds: int, max_messages: int,
+    ) -> bool: ...
+
     async def due_game_deadlines(
         self, now: datetime, *, limit: int
     ) -> tuple[ScheduledGameDeadline, ...]: ...

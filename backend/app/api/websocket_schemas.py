@@ -7,9 +7,10 @@ The gateway supplies player identity from the guest cookie; clients cannot put
 
 from __future__ import annotations
 
+import unicodedata
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, JsonValue, StringConstraints, TypeAdapter
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, StringConstraints, TypeAdapter, field_validator
 
 from app.api.schemas import RoomSnapshot
 
@@ -71,6 +72,14 @@ class FinalizeSolutionAction(WireModel):
 class SendChatMessageAction(WireModel):
     name: Literal["send_chat_message"]
     message: Annotated[str, StringConstraints(min_length=1, max_length=500)]
+
+    @field_validator("message")
+    @classmethod
+    def normalize_message(cls, value: str) -> str:
+        value = value.strip()
+        if not value or len(value) > 500 or any(unicodedata.category(char) == "Cc" for char in value):
+            raise ValueError("Chat message must be plain text between 1 and 500 characters.")
+        return value
 
 
 class LeaveRoomAction(WireModel):

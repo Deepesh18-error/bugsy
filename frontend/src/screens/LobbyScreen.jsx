@@ -3,6 +3,7 @@ import Button from '../components/Button.jsx';
 import Panel from '../components/Panel.jsx';
 import PlayerCard from '../components/PlayerCard.jsx';
 import StatusMessage from '../components/StatusMessage.jsx';
+import ChatPanel from '../components/ChatPanel.jsx';
 import { PREVIEW_MATCH } from '../data/mockMatch.js';
 import styles from '../styles/LobbyScreen.module.css';
 
@@ -10,6 +11,7 @@ export default function LobbyScreen({
   room, message, messageStatus = 'info', isLive = false, isBusy = false,
   connectionStatus = 'idle', connectionError = '', hasSequenceGap = false,
   lastEvent = null,
+  chatMessages = [], onSendChat, canSendChat = false,
   onBack, onStart, onToggleReady,
 }) {
   const [copyMessage, setCopyMessage] = useState('');
@@ -165,6 +167,21 @@ export default function LobbyScreen({
             {message && <StatusMessage as="p" className={styles.startHint} status={messageStatus}>
               {message}
             </StatusMessage>}
+            {isLive && <ChatPanel
+              className={styles.lobbyChat}
+              messages={chatMessages}
+              onSendMessage={onSendChat}
+              isLive
+              maxLength={500}
+              title="Room chat"
+              emptyMessage="No messages yet. Say hello while everyone joins."
+              messageStatus={connectionStatus === 'connected'
+                ? 'Chat is saved and shared with this room.' : 'Reconnect before sending a message.'}
+              disabled={!canSendChat}
+              disabledMessage={connectionStatus !== 'connected'
+                ? 'Reconnect before sending a message.'
+                : !currentPlayer?.isAlive ? 'Eliminated players cannot send messages.' : ''}
+            />}
           </Panel>
         </section>
 

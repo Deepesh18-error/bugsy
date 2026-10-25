@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import PlayerCard from '../components/PlayerCard.jsx';
+import ChatPanel from '../components/ChatPanel.jsx';
 import StatusMessage from '../components/StatusMessage.jsx';
 import TestResults from '../components/TestResults.jsx';
 import SabotageObjectives from '../components/SabotageObjectives.jsx';
@@ -12,7 +13,8 @@ import styles from '../styles/ArenaScreen.module.css';
 const CodeEditor = lazy(() => import('../components/CodeEditor.jsx'));
 
 function timeLeft(deadlineAt) {
-  return Math.max(0, Math.ceil((Date.parse(deadlineAt) - Date.now()) / 1000));
+  const deadline = typeof deadlineAt === 'string' ? Date.parse(deadlineAt) : NaN;
+  return Number.isFinite(deadline) ? Math.max(0, Math.ceil((deadline - Date.now()) / 1000)) : 0;
 }
 
 function formatTime(seconds) {
@@ -22,7 +24,8 @@ function formatTime(seconds) {
 export default function LiveArena({ room, role, categoryName, roundNumber, totalRounds,
   deadlineAt, revisionId, connectionStatus, officialEvent, officialSnapshot, officialRuns,
   runStatusEvent,
-  ownObjectives = [], ownMeetingsUsed = 0,
+  ownObjectives = [], ownMeetingsUsed = 0, meetingCooldownUntil = null,
+  chatMessages = [], onSendChat, canSendChat = false,
   sendCommand, requestSnapshot }) {
   const [session, setSession] = useState(null);
   const [sessionError, setSessionError] = useState('');
@@ -32,6 +35,7 @@ export default function LiveArena({ room, role, categoryName, roundNumber, total
   const [restoreStatusKind, setRestoreStatusKind] = useState('info');
   const [restoring, setRestoring] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState(() => timeLeft(deadlineAt));
+  const [cooldownSeconds, setCooldownSeconds] = useState(() => timeLeft(meetingCooldownUntil));
   const [collaborators, setCollaborators] = useState([]);
   const [accessibleMode, setAccessibleMode] = useState(false);
   const [source, setSource] = useState('');
@@ -169,6 +173,13 @@ export default function LiveArena({ room, role, categoryName, roundNumber, total
   }, [deadlineAt]);
 
   useEffect(() => {
+    const update = () => setCooldownSeconds(timeLeft(meetingCooldownUntil));
+    update();
+    const id = window.setInterval(update, 1000);
+    return () => window.clearInterval(id);
+  }, [meetingCooldownUntil]);
+
+  useEffect(() => {
     if (!session) return undefined;
     let active = true;
     loadEditorHistory(session.documentId).then((items) => {
@@ -221,7 +232,8 @@ export default function LiveArena({ room, role, categoryName, roundNumber, total
   }
 
   async function handleCallMeeting() {
-    if (meetingBusy || ownMeetingsUsed > 0 || !ownPlayer?.isAlive) return;
+    if (meetingBusy || ownMeetingsUsed > 0 || cooldownSeconds > 0
+      || !ownPlayer?.isAlive || connectionStatus !== 'connected' || secondsLeft === 0) return;
     setMeetingBusy(true);
     setMeetingError('');
     try {
@@ -281,10 +293,18 @@ export default function LiveArena({ room, role, categoryName, roundNumber, total
           {finalizeError && <StatusMessage status="error">{finalizeError}</StatusMessage>}
           <button className={styles.meetingButton} type="button" onClick={handleCallMeeting}
             disabled={meetingBusy || ownMeetingsUsed > 0 || !ownPlayer?.isAlive
-              || secondsLeft === 0 || connectionStatus !== 'connected'}>
+              || cooldownSeconds > 0 || secondsLeft === 0 || connectionStatus !== 'connected'}>
             {meetingBusy ? 'Calling meeting…' : ownMeetingsUsed > 0 ? 'Meeting already used'
-              : 'Call emergency meeting'}
+              : cooldownSeconds > 0 ? `Meeting cooldown · ${formatTime(cooldownSeconds)}`
+                : !ownPlayer?.isAlive ? 'Eliminated players cannot call meetings'
+                  : connectionStatus !== 'connected' ? 'Reconnect to call a meeting'
+                    : 'Call emergency meeting'}
           </button>
+          <p className={styles.meetingAvailability}>
+            {ownMeetingsUsed > 0 ? 'You have used your one meeting for this match.'
+              : cooldownSeconds > 0 ? 'A room-wide cooldown is active.'
+                : 'One meeting per player; the call pauses the coding timer for discussion and voting.'}
+          </p>
           {meetingError && <StatusMessage status="error">{meetingError}</StatusMessage>}
           <div className={styles.liveHistory}>
             <h2>Revision history</h2>
@@ -330,12 +350,26 @@ export default function LiveArena({ room, role, categoryName, roundNumber, total
           </div>
           {collaborators.length > 0 && <p className={styles.collaborators}>Editing with {collaborators.join(', ')}</p>}
         </section>
-        <aside className={styles.sideColumn} aria-label="Room players">
+        <aside className={styles.sideColumn} aria-label="Room players and chat">
           <section className={styles.playersPanel}>
             <p className={styles.eyebrow}>IN THIS ROOM</p><h2>Players</h2>
             <ul className={styles.playerList}>{room.players.map((player) =>
               <PlayerCard className={styles.playerRow} key={player.id} player={player} variant="compact" />)}</ul>
           </section>
+          <ChatPanel
+            className={styles.liveChat}
+            messages={chatMessages}
+            onSendMessage={onSendChat}
+            isLive
+            maxLength={500}
+            title="Room chat"
+            emptyMessage="No room messages yet. Start the conversation."
+            messageStatus={connectionStatus === 'connected' ? 'Messages are saved by the room server.' : 'Reconnecting before chat can send…'}
+            disabled={!canSendChat}
+            disabledMessage={connectionStatus !== 'connected'
+              ? 'Reconnect before sending a message.'
+              : !ownPlayer?.isAlive ? 'Eliminated players can read chat but cannot send.' : ''}
+          />
         </aside>
       </div>
       {secondsLeft === 0 && <div className={styles.timeUpBanner} role="status">Round deadline reached. Waiting for server result…</div>}

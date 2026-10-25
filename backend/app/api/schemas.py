@@ -91,6 +91,14 @@ class VoteResultSummary(ApiModel):
     resolved_at: datetime
 
 
+class ChatMessageSummary(ApiModel):
+    message_id: str = Field(pattern=r"^[0-9a-f]{64}$")
+    player_id: str = Field(min_length=1, max_length=128)
+    display_name: str = Field(min_length=1, max_length=96)
+    message: str = Field(min_length=1, max_length=500)
+    sent_at: datetime
+
+
 class RoomSnapshot(ApiModel):
     room_code: str
     phase: GamePhase
@@ -100,7 +108,10 @@ class RoomSnapshot(ApiModel):
     self_player_id: str
     own_category_vote_id: str | None
     has_cast_player_vote: bool
+    own_player_vote_target_id: str | None
     own_meetings_used: int
+    meeting_cooldown_until: datetime | None
+    chat_messages: tuple[ChatMessageSummary, ...] = Field(max_length=100)
     own_role: PlayerRole | None
     own_objectives: tuple[OwnObjective, ...]
     selected_category_id: str | None
@@ -210,7 +221,19 @@ def build_room_response(room: RoomState, player_id: str) -> RoomResponse:
             has_cast_player_vote=any(
                 vote.voter_id == player_id for vote in match.player_votes
             ) if match else False,
+            own_player_vote_target_id=next(
+                (vote.target_id for vote in match.player_votes if vote.voter_id == player_id),
+                None,
+            ) if match else None,
             own_meetings_used=player.emergency_meetings_used,
+            meeting_cooldown_until=match.meeting_cooldown_until if match else None,
+            chat_messages=tuple(ChatMessageSummary(
+                message_id=item.message_id,
+                player_id=item.player_id,
+                display_name=item.display_name,
+                message=item.message,
+                sent_at=item.sent_at,
+            ) for item in room.chat_messages),
             own_role=player.role,
             own_objectives=own_objectives,
             selected_category_id=match.selected_category_id if match else None,

@@ -14,7 +14,7 @@ function formatTime(seconds) {
 
 export default function MeetingScreen({ room, categoryName, roundNumber, onProceedToVote,
   isLive = false, deadlineAt = null, chatMessages = [], onSendMessage,
-  connectionStatus = 'connected' }) {
+  canSendChat = false, connectionStatus = 'connected' }) {
   const [secondsLeft, setSecondsLeft] = useState(DISCUSSION_SECONDS);
   const [messages, setMessages] = useState(INITIAL_DISCUSSION);
 
@@ -109,6 +109,10 @@ export default function MeetingScreen({ room, categoryName, roundNumber, onProce
                 isLive={isLive}
                 maxLength={isLive ? 500 : 180}
                 messageStatus={isLive && connectionStatus !== 'connected' ? 'Reconnecting to discussion…' : ''}
+                disabled={isLive && !canSendChat}
+                disabledMessage={isLive && connectionStatus !== 'connected'
+                  ? 'Reconnect before sending a discussion message.'
+                  : isLive && !canSendChat ? 'Eliminated players can read discussion but cannot send.' : ''}
               />
             </section>
 

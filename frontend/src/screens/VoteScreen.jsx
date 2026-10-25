@@ -15,6 +15,7 @@ export default function VoteScreen({
   isLive = false,
   deadlineAt = null,
   hasVoted = false,
+  ownVoteTargetId = null,
   isSubmitting = false,
   connectionStatus = 'connected',
   error = '',
@@ -110,7 +111,10 @@ export default function VoteScreen({
               </button>
 
               <div className={styles.ballotFooter}>
-                <p>{isLive && hasVoted ? 'Your ballot is saved. Waiting for the server result.'
+                <p>{isLive && hasVoted
+                  ? (ownVoteTargetId === null
+                    ? 'Your skip ballot is saved. Waiting for the server result.'
+                    : `Your ballot for ${room.players.find((player) => player.id === ownVoteTargetId)?.name ?? 'your selected player'} is saved.`)
                   : selectedTargetId ? 'Your choice is selected. Submit to lock your ballot.'
                     : 'Select a player or skip to continue.'}</p>
                 <button

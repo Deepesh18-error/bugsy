@@ -64,8 +64,17 @@ const eventPayloadChecks = {
     && Number.isInteger(payload.skip_count) && payload.skip_count >= 0
     && (payload.ejected_player_id === null || isPlayerId(payload.ejected_player_id))
     && typeof payload.was_tie === 'boolean',
-  ChatMessagePosted: (payload) => hasExactKeys(payload, ['player_id', 'message'])
-    && isPlayerId(payload.player_id) && typeof payload.message === 'string',
+  ChatMessagePosted: (payload) => hasExactKeys(payload, [
+    'message_id', 'player_id', 'display_name', 'message', 'sent_at',
+  ]) && typeof payload.message_id === 'string' && /^[0-9a-f]{64}$/.test(payload.message_id)
+    && isPlayerId(payload.player_id)
+    && typeof payload.display_name === 'string' && payload.display_name.length > 0
+    && payload.display_name.length <= 96
+    && typeof payload.message === 'string' && payload.message.length > 0
+    && payload.message.length <= 500
+    && payload.message === payload.message.trim()
+    && typeof payload.sent_at === 'string' && /(Z|\+00:00)$/.test(payload.sent_at)
+    && Number.isFinite(Date.parse(payload.sent_at)),
   SabotageObjectiveVerified: (payload) => hasExactKeys(payload, ['objective_id', 'source_revision_id'])
     && typeof payload.objective_id === 'string' && typeof payload.source_revision_id === 'string',
   OfficialTestRunStatusChanged: (payload) => hasExactKeys(payload, [

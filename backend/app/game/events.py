@@ -208,7 +208,9 @@ class MatchEnded(GameEvent):
 class ChatMessagePosted(GameEvent):
     occurred_at: datetime
     request_id: str
+    message_id: str
     player_id: str
+    display_name: str
     message: str
 
 

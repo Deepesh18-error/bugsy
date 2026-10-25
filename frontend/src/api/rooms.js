@@ -40,7 +40,8 @@ export function requireRoomSnapshot(snapshot) {
   const isCategory = (value) => value === null || SERVER_CATEGORY_IDS.includes(value);
   const snapshotKeys = [
     'room_code', 'phase', 'capacity', 'expires_at', 'phase_deadline_at',
-    'self_player_id', 'own_category_vote_id', 'has_cast_player_vote', 'own_meetings_used', 'own_role', 'own_objectives',
+    'self_player_id', 'own_category_vote_id', 'has_cast_player_vote', 'own_player_vote_target_id',
+    'own_meetings_used', 'meeting_cooldown_until', 'chat_messages', 'own_role', 'own_objectives',
     'selected_category_id', 'round_number', 'round_ended_at', 'round_end_reason',
     'challenge_id', 'challenge_version', 'current_source_revision_id',
     'official_result', 'official_runs', 'match_result', 'last_vote_result', 'players',
@@ -52,6 +53,7 @@ export function requireRoomSnapshot(snapshot) {
   const officialKeys = ['run_id', 'source_revision_id', 'status', 'all_required_tests_passed', 'tests'];
   const runKeys = ['run_id', 'source_revision_id', 'status', 'requested_at'];
   const resultTestKeys = ['test_id', 'name', 'passed', 'required_for_civilian_win', 'message'];
+  const chatMessageKeys = ['message_id', 'player_id', 'display_name', 'message', 'sent_at'];
   if (!isRecord(snapshot)
     || !hasOnlyKeys(snapshot, snapshotKeys)
     || typeof snapshot.room_code !== 'string' || !snapshot.room_code
@@ -62,8 +64,22 @@ export function requireRoomSnapshot(snapshot) {
     || typeof snapshot.self_player_id !== 'string' || !snapshot.self_player_id
     || !isCategory(snapshot.own_category_vote_id)
     || typeof snapshot.has_cast_player_vote !== 'boolean'
+    || (snapshot.own_player_vote_target_id !== null
+      && (typeof snapshot.own_player_vote_target_id !== 'string' || !snapshot.own_player_vote_target_id))
+    || (!snapshot.has_cast_player_vote && snapshot.own_player_vote_target_id !== null)
     || !Number.isInteger(snapshot.own_meetings_used)
     || snapshot.own_meetings_used < 0
+    || (snapshot.meeting_cooldown_until !== null && !isUtcTime(snapshot.meeting_cooldown_until))
+    || !Array.isArray(snapshot.chat_messages) || snapshot.chat_messages.length > 100
+    || !snapshot.chat_messages.every((message) => isRecord(message)
+      && hasOnlyKeys(message, chatMessageKeys)
+      && typeof message.message_id === 'string' && /^[0-9a-f]{64}$/.test(message.message_id)
+      && typeof message.player_id === 'string' && message.player_id.length > 0
+      && typeof message.display_name === 'string' && message.display_name.length > 0
+      && message.display_name.length <= 96
+      && typeof message.message === 'string' && message.message.length > 0
+      && message.message.length <= 500 && message.message === message.message.trim()
+      && isUtcTime(message.sent_at))
     || (snapshot.own_role !== null && !['civilian', 'impostor'].includes(snapshot.own_role))
     || !isCategory(snapshot.selected_category_id)
     || (snapshot.round_number !== null && (!Number.isInteger(snapshot.round_number)

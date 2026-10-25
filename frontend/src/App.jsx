@@ -169,6 +169,23 @@ export default function App() {
   }, [roomMode, liveRoomSnapshot?.phase, liveSocket.status, liveSocket.requestSnapshot]);
 
   useEffect(() => {
+    if (roomMode !== 'live' || !liveRoomSnapshot) return;
+    const colors = ['coral', 'violet', 'mint', 'gold', 'neutral'];
+    const toneByPlayer = new Map((room?.players ?? []).map((player) => [player.id, player.tone]));
+    const fromSnapshot = liveRoomSnapshot.chat_messages.map((message) => ({
+      id: `${liveRoomSnapshot.room_code}:${message.message_id}`,
+      name: message.display_name,
+      tone: toneByPlayer.get(message.player_id) || colors[0],
+      text: message.message,
+      sentAt: message.sent_at,
+      isYou: message.player_id === liveRoomSnapshot.self_player_id,
+    }));
+    // A snapshot is the authoritative bounded history at its sequence. Newer
+    // messages arrive as events and are merged by their stable message IDs.
+    setLiveChatMessages(fromSnapshot.slice(-100));
+  }, [roomMode, liveRoomSnapshot, room?.players]);
+
+  useEffect(() => {
     if (roomMode !== 'live' || liveSocket.lastEvent?.name !== 'CategorySelected') return;
     const payload = liveSocket.lastEvent.payload;
     setLiveCategoryResult({
@@ -183,14 +200,17 @@ export default function App() {
     if (roomMode !== 'live' || liveSocket.lastEvent?.name !== 'ChatMessagePosted') return;
     const event = liveSocket.lastEvent;
     const player = room?.players.find((item) => item.id === event.payload.player_id);
-    setLiveChatMessages((items) => items.some((item) => item.id === `${event.sequence}:${event.payload.player_id}`)
-      ? items : [...items, {
-      id: `${event.sequence}:${event.payload.player_id}`,
-      name: player?.name || 'Player', tone: player?.tone || 'mint',
+    const message = {
+      id: `${liveRoomCode}:${event.payload.message_id}`,
+      name: event.payload.display_name,
+      tone: player?.tone || 'coral',
       text: event.payload.message,
+      sentAt: event.payload.sent_at,
       isYou: event.payload.player_id === room?.currentPlayerId,
-    }].slice(-100));
-  }, [roomMode, liveSocket.lastEvent, room?.currentPlayerId, room?.players]);
+    };
+    setLiveChatMessages((items) => items.some((item) => item.id === message.id)
+      ? items : [...items, message].slice(-100));
+  }, [roomMode, liveRoomCode, liveSocket.lastEvent, room?.currentPlayerId, room?.players]);
 
   useEffect(() => {
     if (roomMode === 'live' && liveRoomSnapshot?.phase === 'meeting_discussion') {
@@ -747,6 +767,8 @@ export default function App() {
         deadlineAt={liveRoomSnapshot?.phase_deadline_at}
         chatMessages={liveChatMessages}
         onSendMessage={handleLiveChat}
+        canSendChat={liveSocket.status === 'connected'
+          && Boolean(room.players.find((player) => player.id === room.currentPlayerId)?.isAlive)}
         connectionStatus={liveSocket.status}
       />;
     }
@@ -755,7 +777,9 @@ export default function App() {
       const result = showResolvedVote ? liveVoteResult(liveRoomSnapshot) : null;
       return <VoteScreen
         isLive room={room}
-        selectedTargetId={liveVoteSelection}
+        selectedTargetId={liveRoomSnapshot?.has_cast_player_vote
+          ? (liveRoomSnapshot.own_player_vote_target_id ?? SKIP_VOTE)
+          : liveVoteSelection}
         voteCounts={result?.voteCounts ?? {}}
         voteResult={result}
         isLocalPlayerEjected={result?.ejectedPlayerId === room.currentPlayerId}
@@ -764,6 +788,7 @@ export default function App() {
         onContinue={() => setLiveVoteDismissedAt(resolvedVote?.resolved_at ?? null)}
         deadlineAt={liveRoomSnapshot?.phase_deadline_at}
         hasVoted={Boolean(liveRoomSnapshot?.has_cast_player_vote)}
+        ownVoteTargetId={liveRoomSnapshot?.own_player_vote_target_id ?? null}
         isSubmitting={liveVoteBusy}
         connectionStatus={liveSocket.status}
         error={liveVoteError}
@@ -801,6 +826,11 @@ export default function App() {
         officialRuns={liveRoomSnapshot.official_runs}
         ownObjectives={liveRoomSnapshot.own_objectives}
         ownMeetingsUsed={liveRoomSnapshot.own_meetings_used}
+        meetingCooldownUntil={liveRoomSnapshot.meeting_cooldown_until}
+        chatMessages={liveChatMessages}
+        onSendChat={handleLiveChat}
+        canSendChat={liveSocket.status === 'connected'
+          && Boolean(room.players.find((player) => player.id === room.currentPlayerId)?.isAlive)}
         connectionStatus={liveSocket.status}
         officialEvent={liveSocket.lastOfficialResult}
         runStatusEvent={liveSocket.lastEvent}
@@ -831,6 +861,9 @@ export default function App() {
         connectionError={liveSocket.error}
         hasSequenceGap={liveSocket.hasSequenceGap}
         lastEvent={liveSocket.lastEvent}
+        chatMessages={liveChatMessages}
+        onSendChat={handleLiveChat}
+        canSendChat={liveSocket.status === 'connected'}
         onBack={handleLeaveLobby}
         onStart={handleLiveStartMatch}
         onToggleReady={handleLiveToggleReady}

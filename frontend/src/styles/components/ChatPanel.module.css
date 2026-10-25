@@ -6,6 +6,7 @@
 .messages { display: flex; min-height: 100px; max-height: 300px; flex: 1; flex-direction: column; gap: 12px; overflow-y: auto; margin: 14px -3px 12px 0; padding: 0 5px 0 0; list-style: none; }
 .message { min-width: 0; }
 .messageName { font-family: var(--font-mono); font-size: 0.64rem; }
+.sentAt { margin-left: 7px; color: #82908b; font-family: var(--font-mono); font-size: 0.52rem; }
 .message p { overflow-wrap: anywhere; margin: 4px 0 0; color: #d0d9d4; font-size: 0.73rem; line-height: 1.45; }
 .coral { color: #ff9988; }
 .violet { color: #c4a6ff; }

@@ -77,6 +77,15 @@ end
 return attempts <= tonumber(ARGV[2]) and 1 or 0
 """
 
+_CHAT_LIMIT = """
+redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', tonumber(ARGV[1]) - tonumber(ARGV[2]) * 1000)
+if redis.call('ZSCORE', KEYS[1], ARGV[3]) then return 1 end
+if redis.call('ZCARD', KEYS[1]) >= tonumber(ARGV[4]) then return 0 end
+redis.call('ZADD', KEYS[1], tonumber(ARGV[1]), ARGV[3])
+redis.call('PEXPIRE', KEYS[1], tonumber(ARGV[2]) * 1000 + 1000)
+return 1
+"""
+
 _COMMIT_EDITOR = """
 if redis.call('GET', KEYS[1]) ~= ARGV[1] then return 0 end
 local prior = redis.call('GET', KEYS[2])
@@ -329,6 +338,25 @@ class RedisRoomRepository:
             return result == 1
         except RedisError as exc:
             raise RoomStorageError("Room storage is unavailable.") from exc
+
+    async def allow_chat_message(
+        self, room_code: str, player_id: str, request_id: str, now: datetime,
+        *, window_seconds: int, max_messages: int,
+    ) -> bool:
+        if now.tzinfo is None or now.utcoffset() is None or now.utcoffset().total_seconds() != 0:
+            raise ValueError("Chat rate-limit time must be UTC.")
+        if window_seconds <= 0 or max_messages <= 0 or not request_id:
+            raise ValueError("Chat rate-limit policy and request ID must be valid.")
+        subject = sha256(f"{room_code}\0{player_id}".encode("utf-8")).hexdigest()
+        key = f"codemafia:v1:chat-limit:{subject}"
+        now_ms = int(now.timestamp() * 1000)
+        try:
+            result = await self._client.eval(
+                _CHAT_LIMIT, 1, key, now_ms, window_seconds, request_id, max_messages
+            )
+            return result == 1
+        except RedisError as exc:
+            raise RoomStorageError("Room chat rate limiting is unavailable.") from exc
 
     async def due_game_deadlines(
         self, now: datetime, *, limit: int

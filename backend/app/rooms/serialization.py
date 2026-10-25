@@ -10,6 +10,7 @@ from typing import Any
 from app.game.idempotency import MAX_LEGACY_EMBEDDED_RECEIPTS
 from app.game.models import (
     ConnectionStatus,
+    ChatMessageRecord,
     DeadlineKind,
     GameDeadline,
     GamePhase,
@@ -38,7 +39,7 @@ from app.rooms.repository import (
 )
 
 
-STORAGE_VERSION = 5
+STORAGE_VERSION = 6
 LEGACY_STORAGE_VERSION = 1
 PREVIOUS_STORAGE_VERSION = 4
 OLDER_STORAGE_VERSION = 3
@@ -48,6 +49,7 @@ SUPPORTED_STORAGE_VERSIONS = (
     INTERMEDIATE_STORAGE_VERSION,
     OLDER_STORAGE_VERSION,
     PREVIOUS_STORAGE_VERSION,
+    5,
     STORAGE_VERSION,
 )
 MAX_ROOM_BYTES = 1_048_576
@@ -114,6 +116,16 @@ def _player(value: dict[str, Any]) -> PlayerState:
         role=PlayerRole(value["role"]) if value["role"] is not None else None,
         emergency_meetings_used=value["emergency_meetings_used"],
         reconnect_deadline=_deadline(value.get("reconnect_deadline")),
+    )
+
+
+def _chat_message(value: dict[str, Any]) -> ChatMessageRecord:
+    return ChatMessageRecord(
+        message_id=value["message_id"],
+        player_id=value["player_id"],
+        display_name=value["display_name"],
+        message=value["message"],
+        sent_at=_date(value["sent_at"]),
     )
 
 
@@ -269,6 +281,7 @@ def deserialize_room(raw: bytes) -> RoomState:
             capacity=value["capacity"],
             phase_deadline=_deadline(value["phase_deadline"]),
             match=_match(value["match"]),
+            chat_messages=tuple(_chat_message(item) for item in value.get("chat_messages", [])),
             is_closed=value["is_closed"],
         )
     except (KeyError, TypeError, ValueError, UnicodeDecodeError) as exc:

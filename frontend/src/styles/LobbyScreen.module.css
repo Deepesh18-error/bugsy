@@ -2,6 +2,7 @@
 .frame {
   min-height: 100vh;
 }
+.lobbyChat { min-height: 260px; margin-top: 18px; }
 
 .page {
   background:

@@ -29,6 +29,7 @@ class RejectionCode(str, Enum):
     INVALID_VOTE_TARGET = "invalid_vote_target"
     MEETING_ALREADY_USED = "meeting_already_used"
     MEETING_COOLDOWN = "meeting_cooldown"
+    CHAT_RATE_LIMITED = "chat_rate_limited"
     MISSING_DEADLINE = "missing_deadline"
     INVALID_DEADLINE = "invalid_deadline"
     INVALID_SELECTION = "invalid_selection"

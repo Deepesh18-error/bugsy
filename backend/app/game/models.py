@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
 import re
+import unicodedata
 
 
 class GamePhase(str, Enum):
@@ -106,6 +107,7 @@ class RoundEndReason(str, Enum):
 MAX_OFFICIAL_TEST_HISTORY = 32
 MAX_TEST_PASS_EVIDENCE = 256
 MAX_ROUND_HISTORY = 3
+MAX_CHAT_MESSAGES = 100
 
 
 def _require_non_blank(value: str, field_name: str) -> None:
@@ -407,6 +409,29 @@ class VoteResolution:
 
 
 @dataclass(frozen=True, slots=True)
+class ChatMessageRecord:
+    """One bounded, room-visible message with server-owned identity and time."""
+
+    message_id: str
+    player_id: str
+    display_name: str
+    message: str
+    sent_at: datetime
+
+    def __post_init__(self) -> None:
+        _require_non_blank(self.message_id, "message_id")
+        _require_non_blank(self.player_id, "player_id")
+        _require_non_blank(self.display_name, "display_name")
+        _require_non_blank(self.message, "message")
+        if (len(self.message_id) > 128 or len(self.player_id) > 128
+            or len(self.display_name) > 96 or len(self.message) > 500
+            or self.message != self.message.strip()
+            or any(unicodedata.category(char) == "Cc" for char in self.message)):
+            raise ValueError("Chat messages must be trimmed and at most 500 characters.")
+        _require_utc_datetime(self.sent_at, "sent_at")
+
+
+@dataclass(frozen=True, slots=True)
 class MatchState:
     """Match-wide state that persists across its rounds."""
 
@@ -481,6 +506,7 @@ class RoomState:
     capacity: int = 5
     phase_deadline: GameDeadline | None = None
     match: MatchState | None = None
+    chat_messages: tuple[ChatMessageRecord, ...] = ()
     is_closed: bool = False
 
     def __post_init__(self) -> None:
@@ -515,3 +541,7 @@ class RoomState:
             raise ValueError("a committed match result requires the GAME_OVER phase")
         if not isinstance(self.is_closed, bool):
             raise ValueError("is_closed must be a boolean")
+        if (not isinstance(self.chat_messages, tuple)
+            or len(self.chat_messages) > MAX_CHAT_MESSAGES
+            or any(not isinstance(item, ChatMessageRecord) for item in self.chat_messages)):
+            raise ValueError("Room chat history must be a bounded tuple of chat records.")

@@ -293,6 +293,7 @@
 
 .meetingButton:hover:not(:disabled) { background: rgb(255 120 94 / 16%); }
 .meetingButton:disabled { cursor: not-allowed; opacity: 0.48; }
+.meetingAvailability { margin: 7px 0 0; color: var(--color-muted); font-size: 0.65rem; line-height: 1.45; }
 
 .editorPanel { display: flex; min-height: 650px; flex-direction: column; }
 .languageBadge { color: #b8c4be; }
@@ -323,6 +324,7 @@
 .editorNote { margin-top: 13px; }
 
 .sideColumn { display: grid; min-width: 0; gap: 14px; }
+.liveChat { min-height: 350px; }
 .playersPanel,
 .chatPanel { padding: 17px; }
 .playerList { gap: 4px; }

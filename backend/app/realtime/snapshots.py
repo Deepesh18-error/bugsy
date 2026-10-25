@@ -80,7 +80,13 @@ def project_event(event: domain.GameEvent, sequence: int) -> tuple[str | None, S
     elif isinstance(event, domain.MatchEnded):
         payload = {"winner": event.winner.value, "reason": event.reason.value, "round_number": event.round_number}
     elif isinstance(event, domain.ChatMessagePosted):
-        payload = {"player_id": event.player_id, "message": event.message}
+        payload = {
+            "message_id": event.message_id,
+            "player_id": event.player_id,
+            "display_name": event.display_name,
+            "message": event.message,
+            "sent_at": event.occurred_at.isoformat(),
+        }
     elif isinstance(event, (domain.PlayerDeparted, domain.PlayerDisconnected, domain.PlayerReconnected)):
         payload = {"player_id": event.player_id}
     elif isinstance(event, domain.HostTransferred):

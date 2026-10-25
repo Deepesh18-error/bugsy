@@ -12,9 +12,11 @@ serialize calls for a room and supply choices made by its injected selector.
 
 from __future__ import annotations
 
+import unicodedata
 from collections import Counter
 from dataclasses import replace
 from datetime import datetime, timedelta
+from hashlib import sha256
 from typing import TypeAlias
 
 from .commands import (
@@ -70,6 +72,7 @@ from .deadlines import (
 )
 from .models import (
     ConnectionStatus,
+    ChatMessageRecord,
     DeadlineKind,
     GameDeadline,
     GamePhase,
@@ -77,6 +80,7 @@ from .models import (
     MatchResult,
     MatchState,
     MatchWinner,
+    MAX_CHAT_MESSAGES,
     MAX_OFFICIAL_TEST_HISTORY,
     MAX_TEST_PASS_EVIDENCE,
     OfficialRunProgress,
@@ -1343,16 +1347,47 @@ def _send_chat(
     command: SendChatMessage,
     now: datetime,
 ) -> TransitionOutcome:
-    player = _find_player(state, command.player_id, require_alive=False)
+    """Append room chat in lobby, coding, or open discussion only.
+
+    Living connected players may send. Eliminated and disconnected players can
+    still recover the room's public history, but cannot post; ballots stay
+    silent so discussion cannot reveal or influence an in-progress vote.
+    """
+
+    if state.phase not in {
+        GamePhase.LOBBY,
+        GamePhase.CODING_ROUND,
+        GamePhase.MEETING_DISCUSSION,
+    }:
+        return _reject(state, RejectionCode.WRONG_PHASE, "Chat is closed during this phase.", command.request_id)
+    if state.phase in {GamePhase.CODING_ROUND, GamePhase.MEETING_DISCUSSION} and not _deadline_is_open(state, now):
+        return _reject(state, RejectionCode.DEADLINE_PASSED, "Chat is closed because this phase has ended.", command.request_id)
+    message = command.message.strip()
+    if not message or len(message) > 500 or any(unicodedata.category(char) == "Cc" for char in message):
+        return _reject(state, RejectionCode.INVALID_SELECTION, "Enter a plain-text message of 1 to 500 characters.", command.request_id)
+    player = _find_player(state, command.player_id, require_alive=True)
     if player is None:
-        return _reject(state, RejectionCode.PLAYER_NOT_CONNECTED, "Only a connected room member may chat.", command.request_id)
+        return _reject(state, RejectionCode.PLAYER_NOT_CONNECTED, "Only a connected living player may chat.", command.request_id)
+    record = ChatMessageRecord(
+        message_id=sha256(
+            f"{player.player_id}\0{command.request_id}".encode("utf-8")
+        ).hexdigest(),
+        player_id=player.player_id,
+        display_name=player.display_name,
+        message=message,
+        sent_at=now,
+    )
+    history = (*state.chat_messages, record)[-MAX_CHAT_MESSAGES:]
+    updated = replace(state, chat_messages=history)
     return _accepted(
-        state,
+        updated,
         ChatMessagePosted(
             occurred_at=now,
             request_id=command.request_id,
+            message_id=record.message_id,
             player_id=command.player_id,
-            message=command.message,
+            display_name=player.display_name,
+            message=message,
         ),
     )
 
