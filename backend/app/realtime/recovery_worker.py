@@ -35,9 +35,9 @@ class RecoveryWorker:
             try:
                 await self.process_once()
             except RoomStorageError:
-                logger.exception("Room storage is unavailable; retrying recovery.")
-            except Exception:
-                logger.exception("Runner recovery failed; retrying.")
+                logger.warning("Room storage is unavailable; retrying recovery.")
+            except Exception as exc:
+                logger.error("Runner recovery failed (%s); retrying.", type(exc).__name__)
             try:
                 await asyncio.wait_for(stop.wait(), timeout=self._poll_seconds)
             except asyncio.TimeoutError:

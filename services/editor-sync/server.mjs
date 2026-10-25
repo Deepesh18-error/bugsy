@@ -99,7 +99,7 @@ async function acceptUpdate(context, socket, update) {
     context.revisionId = result.revision_id;
     broadcast(context, syncPacket((encoder) => sync.writeUpdate(encoder, update)), socket);
   } catch (error) {
-    console.error('Editor update could not be committed:', error.message);
+    console.error('Editor update could not be committed:', error.status || 'internal error');
     if (error.status === 401 || error.status === 403) {
       socket.close(4403, 'Editor session is no longer authorized');
       return;
@@ -119,7 +119,7 @@ async function acceptUpdate(context, socket, update) {
   }
 }
 
-function processMessage(context, socket, bytes) {
+async function processMessage(context, socket, bytes) {
   if (bytes.byteLength > MAX_MESSAGE) {
     socket.close(4400, 'Message too large');
     return;
@@ -129,6 +129,7 @@ function processMessage(context, socket, bytes) {
   if (kind === 0) {
     const subtype = decoding.readVarUint(decoder);
     if (subtype === sync.messageYjsSyncStep1) {
+      await backend('authorize', socket.guestCookie, { document_id: context.documentId });
       const stateVector = decoding.readVarUint8Array(decoder);
       send(socket, syncPacket((encoder) => sync.writeSyncStep2(encoder, context.doc, stateVector)));
       return;
@@ -139,6 +140,9 @@ function processMessage(context, socket, bytes) {
       return;
     }
   } else if (kind === 1) {
+    // Code writes are checked by /internal/commit. Presence and read requests
+    // need a fresh membership check because they do not create a revision.
+    await backend('authorize', socket.guestCookie, { document_id: context.documentId });
     const update = decoding.readVarUint8Array(decoder);
     if (update.byteLength > 8192) {
       socket.close(4400, 'Awareness update too large');
@@ -165,6 +169,7 @@ function processMessage(context, socket, bytes) {
     broadcast(context, awarenessPacket(context.awareness, [...socket.clientIds]));
     return;
   } else if (kind === 3) {
+    await backend('authorize', socket.guestCookie, { document_id: context.documentId });
     send(socket, awarenessPacket(context.awareness, [...context.awareness.getStates().keys()]));
     return;
   }
@@ -234,7 +239,10 @@ const server = createServer(async (request, response) => {
     });
     response.writeHead(200).end(JSON.stringify({ revision_id: revision }));
   } catch (error) {
-    response.writeHead(409).end(JSON.stringify({ error: { code: 'RESTORE_FAILED', message: error.message } }));
+    const status = error.status === 401 || error.status === 403 ? 403 : 409;
+    response.writeHead(status).end(JSON.stringify({
+      error: { code: 'RESTORE_FAILED', message: 'This revision could not be restored.' },
+    }));
   }
 });
 
@@ -308,8 +316,10 @@ server.on('upgrade', async (request, socket, head) => {
       peer.on('message', (bytes) => {
         peer.messageCount += 1;
         if (peer.messageCount > 300) { peer.close(4400, 'Editor message rate exceeded'); return; }
-        try { processMessage(context, peer, bytes); }
-        catch { peer.close(4400, 'Malformed editor message'); }
+        void processMessage(context, peer, bytes).catch((error) => {
+          peer.close(error.status === 401 || error.status === 403 ? 4403 :
+            error.status ? 4501 : 4400, 'Editor access or message is invalid');
+        });
       });
       peer.on('close', () => {
         context.sockets.delete(peer);
@@ -331,7 +341,7 @@ server.on('upgrade', async (request, socket, head) => {
       });
     });
   } catch (error) {
-    console.error('Editor connection denied:', error.message);
+    console.error('Editor connection denied:', error.status || 'internal error');
     sockets.handleUpgrade(request, socket, head, (peer) => {
       peer.close(error.status === 401 || error.status === 403 ? 4403 : 4501,
         'Editor access is unavailable');

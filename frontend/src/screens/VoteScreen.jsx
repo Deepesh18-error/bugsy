@@ -44,7 +44,7 @@ export default function VoteScreen({
     <main className={styles.page}>
       <div className={styles.frame}>
         <header className={styles.topbar}>
-          <a className={styles.brand} href="#vote" aria-label="CodeMafia voting">
+          <a className={styles.brand} href="#vote">
             <span className={styles.brandMark} aria-hidden="true">CM</span>
             <span>codemafia</span>
           </a>
@@ -63,6 +63,10 @@ export default function VoteScreen({
                 ? 'The group result is shown below. Individual ballots stay private.'
                 : 'Choose one living player or skip. Your ballot locks when you submit it.'}
             </p>
+            {isLive && <span className="srOnly" role="status">
+              {secondsLeft > 0 && secondsLeft <= 10 ? '10 seconds or less remain to vote.'
+                : secondsLeft === 0 ? 'Voting time has ended.' : ''}
+            </span>}
           </div>
 
           {!voteResult ? (

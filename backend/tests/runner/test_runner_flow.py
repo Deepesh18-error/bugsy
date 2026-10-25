@@ -84,6 +84,41 @@ class RunnerFlowTests(unittest.TestCase):
         with self.assertRaises(RunnerQueueFull):
             run_immediate(self.queue())
 
+    def test_manual_and_automatic_requests_for_one_revision_have_one_job_identity(self):
+        seen = {}
+        async def coalesce(job):
+            prior = seen.get(job.dedupe_key)
+            if prior is not None:
+                return RunnerEnqueueReceipt(state=RunnerQueueState.DEDUPLICATED, run_id=prior)
+            seen[job.dedupe_key] = job.run_id
+            return RunnerEnqueueReceipt(state=RunnerQueueState.ENQUEUED,
+                                        run_id=job.run_id, stream_id="1-0")
+        self.runner.enqueue_job = coalesce
+        first = run_immediate(self.service.enqueue_for_revision(
+            self.rooms.stored, player_id="player-1", request_id="auto-1",
+            source_revision_id="revision-1", now=NOW,
+        ))
+        second = run_immediate(self.service.enqueue_for_revision(
+            self.rooms.stored, player_id="player-2", request_id="manual-2",
+            source_revision_id="revision-1", now=NOW,
+        ))
+        self.assertEqual(first.run_id, second.run_id)
+        self.assertEqual(len(seen), 1)
+
+    def test_result_from_previous_round_cannot_win_current_round(self):
+        run_immediate(self.queue())
+        result = signed_result(self.runner.job)
+        state = self.rooms.stored.state
+        current = replace(state.match.current_round, number=2)
+        match = replace(state.match, round_number=2, current_round=current)
+        next_round = replace(state, match=match)
+        self.rooms.stored = StoredRoom(next_round, serialize_room(next_round), 0)
+        processor = RunnerResultProcessor(self.rooms, self.runner, self.connections, signing_key=KEY)
+        self.assertTrue(run_immediate(processor.process(result)))
+        self.assertIsNone(self.rooms.stored.state.match.current_round.official_test_result)
+        self.assertIsNone(self.rooms.stored.state.match.result)
+        self.assertFalse(self.connections.public)
+
     def test_result_is_accepted_only_for_current_revision_and_hidden_ids_stay_private(self):
         run_immediate(self.queue())
         hidden = next(item.id for item in LOADED.challenge.tests if item.visibility == "hidden")

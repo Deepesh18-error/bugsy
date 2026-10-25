@@ -54,10 +54,10 @@ class RunnerResultWorker:
             except asyncio.CancelledError:
                 raise
             except RunnerStorageError:
-                logger.exception("Runner result storage is unavailable; retrying.")
+                logger.warning("Runner result storage is unavailable; retrying.")
                 await _wait_or_stop(stop, 1.0)
-            except Exception:
-                logger.exception("Unexpected runner result worker error; retrying.")
+            except Exception as exc:
+                logger.error("Unexpected runner result worker error (%s); retrying.", type(exc).__name__)
                 await _wait_or_stop(stop, 1.0)
 
     async def _handle_message(self, stream_id: str, payload: bytes) -> None:
@@ -75,11 +75,11 @@ class RunnerResultWorker:
             logger.warning("Discarding an invalid runner result envelope.")
             await self._repository.acknowledge_result(group=self._group, stream_id=stream_id)
             return
-        except Exception:
+        except Exception as exc:
             # Leave pending so another worker/restart can recover transient
             # room-store failures. Unexpected application errors get the same
             # retry behavior, and remain visible in logs without payload data.
-            logger.exception("Runner result processing failed; leaving it pending.")
+            logger.error("Runner result processing failed (%s); leaving it pending.", type(exc).__name__)
             return
         if not terminal:
             return

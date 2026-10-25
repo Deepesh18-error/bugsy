@@ -72,7 +72,7 @@ export default function WelcomeScreen({ onCreateRoom, onJoinRoom, onPreview, res
     <main className={styles.page}>
       <div className={styles.frame}>
         <header className={styles.topbar}>
-          <a className={styles.brand} href="#welcome" aria-label="CodeMafia home">
+          <a className={styles.brand} href="#welcome">
             <span className={styles.brandMark} aria-hidden="true">CM</span>
             <span>codemafia</span>
           </a>

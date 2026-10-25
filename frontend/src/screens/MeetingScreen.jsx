@@ -55,7 +55,7 @@ export default function MeetingScreen({ room, categoryName, roundNumber, onProce
     <main className={styles.page}>
       <div className={styles.frame}>
         <header className={styles.topbar}>
-          <a className={styles.brand} href="#meeting" aria-label="CodeMafia meeting">
+          <a className={styles.brand} href="#meeting">
             <span className={styles.brandMark} aria-hidden="true">CM</span>
             <span>codemafia</span>
           </a>
@@ -81,10 +81,13 @@ export default function MeetingScreen({ room, categoryName, roundNumber, onProce
                   <p className={styles.panelEyebrow}>OPEN DISCUSSION</p>
                   <h2 id="discussion-title">What happened?</h2>
                 </div>
-                <div className={`${styles.timer} ${timerIsLow ? styles.timerLow : ''}`} aria-label={`${formatTime(secondsLeft)} discussion time remaining`}>
+                <div className={`${styles.timer} ${timerIsLow ? styles.timerLow : ''}`} role="timer" aria-live="off" aria-label={`${formatTime(secondsLeft)} discussion time remaining`}>
                   <span>DISCUSSION</span>
                   <strong>{formatTime(secondsLeft)}</strong>
                 </div>
+                <span className="srOnly" role="status">
+                  {secondsLeft > 0 && secondsLeft <= 10 ? '10 seconds or less remain in discussion.' : ''}
+                </span>
               </div>
 
               <div className={styles.contextCard}>

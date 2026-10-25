@@ -115,7 +115,7 @@ class DeadlineScheduler:
             except RoomStorageError:
                 # Redis outages are transient. Entries remain durable, so the
                 # next pass can resume without fabricating a room transition.
-                logger.exception("Could not process game deadlines; retrying")
+                logger.warning("Could not process game deadlines; retrying")
             try:
                 await asyncio.wait_for(stop.wait(), timeout=self._poll_seconds)
             except asyncio.TimeoutError:

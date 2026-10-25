@@ -79,26 +79,28 @@ export default function ChatPanel({
           <p>{emptyMessage}</p>
         </div>
       ) : (
-        <ol className={styles.messages} aria-label={`${title} messages`} aria-live="polite" aria-relevant="additions">
-          {messages.map((message) => {
-            const toneClass = styles[message.tone] ?? '';
-            return (
-              <li className={styles.message} key={message.id}>
-                <strong className={`${styles.messageName} ${toneClass}`}>
-                  {message.name}{message.isYou ? ' · you' : ''}
-                </strong>
-                {message.sentAt && <time dateTime={message.sentAt} className={styles.sentAt}>
-                  {Number.isFinite(Date.parse(message.sentAt))
-                    ? `${new Date(message.sentAt).toLocaleTimeString([], {
-                      timeZone: 'UTC', hour: '2-digit', minute: '2-digit', hour12: false,
-                    })} UTC`
-                    : 'Server time unavailable'}
-                </time>}
-                <p>{message.text}</p>
-              </li>
-            );
-          })}
-        </ol>
+        <div role="log" aria-label={`${title} messages`} aria-live="polite" aria-relevant="additions">
+          <ol className={styles.messages}>
+            {messages.map((message) => {
+              const toneClass = styles[message.tone] ?? '';
+              return (
+                <li className={styles.message} key={message.id}>
+                  <strong className={`${styles.messageName} ${toneClass}`}>
+                    {message.name}{message.isYou ? ' · you' : ''}
+                  </strong>
+                  {message.sentAt && <time dateTime={message.sentAt} className={styles.sentAt}>
+                    {Number.isFinite(Date.parse(message.sentAt))
+                      ? `${new Date(message.sentAt).toLocaleTimeString([], {
+                        timeZone: 'UTC', hour: '2-digit', minute: '2-digit', hour12: false,
+                      })} UTC`
+                      : 'Server time unavailable'}
+                  </time>}
+                  <p>{message.text}</p>
+                </li>
+              );
+            })}
+          </ol>
+        </div>
       )}
 
       <form className={styles.form} onSubmit={handleSubmit}>

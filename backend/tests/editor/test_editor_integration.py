@@ -8,10 +8,11 @@ from datetime import timedelta
 from types import SimpleNamespace
 
 from app.api.editor import (
-    CommitRequest, DocumentRequest, InitializeRequest, authorize_editor,
-    commit_editor, editor_history, initialize_editor,
+    CommitRequest, DocumentRequest, InitializeRequest, SessionRequest,
+    authorize_editor, commit_editor, editor_history, editor_session, initialize_editor,
 )
 from app.challenges.loader import load_challenge
+from app.game.models import ConnectionStatus
 from app.realtime.coordinator import RoomCoordinator
 from app.rooms.redis_repository import RedisRoomRepository
 from app.rooms.repository import editor_document_id
@@ -133,6 +134,56 @@ class EditorIntegrationTests(unittest.TestCase):
         self.client.values["codemafia:v1:room:TEST42"] = serialize_room(state)
         self.assertEqual((await authorize_editor(
             DocumentRequest(document_id=self.document_id), self.request)).status_code, 409)
+
+    @immediate_test
+    async def test_other_room_guest_and_guessed_document_are_rejected(self):
+        class OtherRoomGuest:
+            async def authenticate_player(_, credential):
+                if credential != "good-cookie":
+                    raise RoomServiceError("SESSION_INVALID", "Invalid session.", 401)
+                foreign = replace(self.stored.state, room_code="OTHER42")
+                return AuthenticatedGuest(foreign, "p1", NOW + timedelta(hours=1), 0)
+
+        self.request.app.state.room_service = OtherRoomGuest()
+        session = await editor_session(SessionRequest(room_code="TEST42", round_number=1), self.request)
+        self.assertEqual(session.status_code, 403)
+        guessed = await authorize_editor(DocumentRequest(document_id=self.document_id), self.request)
+        self.assertEqual(guessed.status_code, 403)
+        self.assertNotIn("starter_code", json.dumps(response_data(guessed)))
+
+        self.request.app.state.room_service = GuestService(self.repository)
+        guessed = await authorize_editor(
+            DocumentRequest(document_id="TEST42:guessed-match:1"), self.request)
+        self.assertEqual(guessed.status_code, 403)
+
+    @immediate_test
+    async def test_eliminated_and_departed_players_cannot_open_editor(self):
+        for change in ({"is_alive": False}, {"connection": ConnectionStatus.DEPARTED}):
+            with self.subTest(change=change):
+                players = list(self.stored.state.players)
+                players[0] = replace(players[0], **change)
+                denied_state = replace(self.stored.state, players=tuple(players))
+                self.client.values["codemafia:v1:room:TEST42"] = serialize_room(denied_state)
+                denied = await authorize_editor(
+                    DocumentRequest(document_id=self.document_id), self.request)
+                self.assertEqual(denied.status_code, 403)
+                self.assertNotIn("source", json.dumps(response_data(denied)))
+
+    @immediate_test
+    async def test_old_round_commit_cannot_change_new_round(self):
+        current = replace(self.stored.state.match.current_round, number=2)
+        match = replace(self.stored.state.match, round_number=2, current_round=current)
+        next_round = replace(self.stored.state, match=match)
+        self.client.values["codemafia:v1:room:TEST42"] = serialize_room(next_round)
+        old_write = await commit_editor(CommitRequest(
+            document_id=self.document_id, previous_revision_id="seed-a",
+            source="malicious old-round write", y_state=Y_STATE,
+        ), self.request)
+        self.assertEqual(old_write.status_code, 403)
+        stored = await self.repository.load_room("TEST42")
+        self.assertEqual(stored.state.match.current_round.number, 2)
+        self.assertEqual(stored.state.match.current_round.current_source_revision_id, "seed-a")
+        self.assertIsNone(await self.repository.load_editor_document(self.document_id))
 
 
 if __name__ == "__main__":

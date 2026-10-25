@@ -30,7 +30,7 @@ export default function CategoryVoteScreen({
     <main className={styles.page}>
       <div className={styles.frame}>
         <header className={styles.topbar}>
-          <a className={styles.brand} href="#category-vote" aria-label="CodeMafia home">
+          <a className={styles.brand} href="#category-vote">
             <span className={styles.brandMark} aria-hidden="true">CM</span>
             <span>codemafia</span>
           </a>

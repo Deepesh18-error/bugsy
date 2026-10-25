@@ -65,7 +65,12 @@ class SandboxIntegrationTests(unittest.TestCase):
                 self.assertEqual(result.failure_kind, TestFailureKind.EXCEPTION)
 
     def test_filesystem_and_network_access_attempts_fail(self):
-        for action in ("open('/etc/passwd').read()", "__import__('socket').socket()"):
+        for action in (
+            "open('/etc/passwd').read()",
+            "open('/opt/runner/worker.py').read()",
+            "__import__('socket').socket()",
+            "__import__('challenges.registry')",
+        ):
             source = f"class Counter:\n    def __init__(self):\n        {action}\n"
             with self.subTest(action=action):
                 result = self.run_cases(source)[0]
@@ -89,6 +94,26 @@ class Counter:
         self.history.append('inc')
 """
         self.assertTrue(self.run_cases(source)[0].passed)
+
+    def test_every_run_removes_its_source_directory(self):
+        with tempfile.TemporaryDirectory(dir="/runs") as directory:
+            runs_dir = Path(directory)
+            executor = RunnerExecutor(runs_dir)
+            spec = ChallengeSpec(
+                challenge_id=COUNTER.challenge_id, version=COUNTER.version,
+                content_digest=COUNTER.content_digest,
+                runtime_policy=COUNTER.runtime_policy, tests=COUNTER.tests[:1],
+            )
+            source = """class Counter:
+    def __init__(self):
+        self.count = 0
+        self.history = []
+    def increment(self):
+        self.count += 1
+        self.history.append('inc')
+"""
+            asyncio.run(executor.execute(job(source=source), spec))
+            self.assertEqual(list(runs_dir.iterdir()), [])
 
 
 if __name__ == "__main__":

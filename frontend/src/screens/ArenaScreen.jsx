@@ -83,7 +83,7 @@ function PreviewArena({
   return (
     <main className={styles.page}>
       <header className={styles.topbar}>
-        <a className={styles.brand} href="#arena" aria-label="CodeMafia arena">
+        <a className={styles.brand} href="#arena">
           <span className={styles.brandMark} aria-hidden="true">CM</span>
           <span>codemafia</span>
         </a>

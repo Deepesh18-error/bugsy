@@ -58,7 +58,7 @@ export default function LobbyScreen({
     <main className={styles.page}>
       <div className={styles.frame}>
         <header className={styles.topbar}>
-          <a className={styles.brand} href="#lobby" aria-label="CodeMafia home">
+          <a className={styles.brand} href="#lobby">
             <span className={styles.brandMark} aria-hidden="true">CM</span><span>codemafia</span>
           </a>
           <Button className={styles.backButton} disabled={isBusy} onClick={onBack} variant="unstyled">

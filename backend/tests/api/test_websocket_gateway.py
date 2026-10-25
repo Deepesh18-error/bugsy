@@ -121,6 +121,19 @@ class WebSocketGatewayTests(unittest.TestCase):
         self.assertEqual(socket.closed, [1008])
         self.assertEqual(socket.service.calls, 0)
 
+    def test_missing_origin_and_query_credentials_are_denied_before_accept(self) -> None:
+        missing_origin = _FakeSocket([])
+        missing_origin.headers.clear()
+        _run_immediate(room_websocket(missing_origin))
+        self.assertEqual(missing_origin.closed, [1008])
+        self.assertEqual(missing_origin.service.calls, 0)
+
+        query_credential = _FakeSocket([])
+        query_credential.url.query = "token=private-cookie"
+        _run_immediate(room_websocket(query_credential))
+        self.assertEqual(query_credential.closed, [1008])
+        self.assertEqual(query_credential.service.calls, 0)
+
     def test_authorized_guest_gets_snapshot_and_pong(self) -> None:
         socket = _FakeSocket(
             [_text_frame({"version": 1, "type": "ping", "nonce": "n1"}), DISCONNECT]
@@ -173,6 +186,17 @@ class WebSocketGatewayTests(unittest.TestCase):
         )
         _run_immediate(room_websocket(socket))
         self.assertEqual(socket.sent[1]["code"], "INVALID_MESSAGE")
+
+    def test_client_cannot_claim_a_role_or_publish_an_official_result(self) -> None:
+        for action in (
+            {"name": "set_ready", "ready": True, "role": "impostor"},
+            {"name": "official_test_result", "all_required_tests_passed": True},
+            {"name": "send_chat_message", "message": "x" * 501},
+        ):
+            with self.subTest(action=action["name"]), self.assertRaises(ValidationError):
+                client_message_adapter.validate_python({
+                    "version": 1, "type": "command", "request_id": "req-1", "action": action,
+                })
 
     def test_rotated_cookie_closes_existing_connection(self) -> None:
         socket = _FakeSocket(

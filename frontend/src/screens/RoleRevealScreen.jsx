@@ -44,7 +44,7 @@ export default function RoleRevealScreen({
     <main className={`${styles.page} ${roleStyle}`}>
       <div className={styles.frame}>
         <header className={styles.topbar}>
-          <a className={styles.brand} href="#role-reveal" aria-label="CodeMafia home">
+          <a className={styles.brand} href="#role-reveal">
             <span className={styles.brandMark} aria-hidden="true">CM</span>
             <span>codemafia</span>
           </a>

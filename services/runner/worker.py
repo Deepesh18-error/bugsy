@@ -84,10 +84,10 @@ class RunnerWorker:
             except asyncio.CancelledError:
                 raise
             except RedisError:
-                logger.exception("Runner queue unavailable; retrying.")
+                logger.warning("Runner queue unavailable; retrying.")
                 await _wait_or_stop(stop, 1.0)
-            except Exception:
-                logger.exception("Runner worker loop failed; retrying.")
+            except Exception as exc:
+                logger.error("Runner worker loop failed (%s); retrying.", type(exc).__name__)
                 await _wait_or_stop(stop, 1.0)
 
     async def _ensure_group(self) -> None:
@@ -151,8 +151,8 @@ class RunnerWorker:
                 # into passing test verdicts.
                 tests = ()
                 status = RunnerStatus.RUNNER_ERROR
-            except Exception:
-                logger.exception("Trusted runner execution failed for run %s.", job.run_id)
+            except Exception as exc:
+                logger.error("Trusted runner execution failed for run %s (%s).", job.run_id, type(exc).__name__)
                 tests = ()
                 status = RunnerStatus.RUNNER_ERROR
             completed_at = datetime.now(timezone.utc)
@@ -169,7 +169,7 @@ class RunnerWorker:
                 return
             await self._acknowledge(stream_id)
         except RedisError:
-            logger.exception("Could not publish runner result; job remains pending.")
+            logger.warning("Could not publish runner result; job remains pending.")
 
     async def _acknowledge(self, stream_id: str) -> None:
         await self._redis.eval(_ACK_AND_DELETE, 1, JOB_STREAM, self._settings.group, stream_id)

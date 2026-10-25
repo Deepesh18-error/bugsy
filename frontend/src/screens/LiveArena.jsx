@@ -266,9 +266,13 @@ export default function LiveArena({ room, role, categoryName, roundNumber, total
       <header className={styles.topbar}>
         <span className={styles.brand}><span className={styles.brandMark} aria-hidden="true">CM</span> codemafia</span>
         <div className={styles.roundMeta}>ROUND {roundNumber}/{totalRounds} · {categoryName}</div>
-        <div className={`${styles.timer} ${secondsLeft <= 15 ? styles.timerLow : ''}`} aria-label={`${formatTime(secondsLeft)} remaining`}>
+        <div className={`${styles.timer} ${secondsLeft <= 15 ? styles.timerLow : ''}`} role="timer" aria-live="off" aria-label={`${formatTime(secondsLeft)} remaining`}>
           <span className={styles.timerLabel}>TIME LEFT</span><strong>{formatTime(secondsLeft)}</strong>
         </div>
+        <span className="srOnly" role="status">
+          {secondsLeft > 0 && secondsLeft <= 15 ? '15 seconds or less remain in this coding round.'
+            : secondsLeft > 15 && secondsLeft <= 60 ? 'One minute or less remains in this coding round.' : ''}
+        </span>
         <div className={styles.roomCode}><span>ROOM</span><strong>{room.code}</strong></div>
       </header>
       <div className={styles.layout}>

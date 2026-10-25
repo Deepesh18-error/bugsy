@@ -43,10 +43,24 @@ button {
 
 button:focus-visible,
 input:focus-visible,
+textarea:focus-visible,
 a:focus-visible,
 summary:focus-visible {
   outline: 3px solid var(--color-lime);
   outline-offset: 3px;
+}
+
+/* Shared by timer announcements and other text intended for assistive tech. */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 ::selection {

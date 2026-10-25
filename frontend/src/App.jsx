@@ -134,6 +134,20 @@ export default function App() {
         : null)
     : null;
 
+  // A phase change replaces the main screen. Put keyboard and screen-reader
+  // focus on its heading instead of leaving it on a removed button/editor.
+  const focusKey = roomMode === 'live' ? liveRoomSnapshot?.phase : screen;
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      const heading = document.querySelector('main h1');
+      if (heading) {
+        heading.tabIndex = -1;
+        heading.focus();
+      }
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [focusKey]);
+
   useEffect(() => {
     if (roomMode === 'live' && liveSocket.snapshot?.room_code === liveRoomCode) {
       const nextRoom = toLobbyView(liveSocket.snapshot);

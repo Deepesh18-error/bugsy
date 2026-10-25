@@ -22,7 +22,7 @@ export default function ResultsScreen({
     <main className={styles.page}>
       <div className={styles.frame}>
         <header className={styles.topbar}>
-          <a className={styles.brand} href="#results" aria-label="CodeMafia results">
+          <a className={styles.brand} href="#results">
             <span className={styles.brandMark} aria-hidden="true">CM</span>
             <span>codemafia</span>
           </a>
