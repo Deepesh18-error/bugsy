@@ -1,3 +1,5 @@
+import { useEffect, useState } from 'react';
+import StatusMessage from '../components/StatusMessage.jsx';
 import styles from '../styles/VoteScreen.module.css';
 import { SKIP_VOTE } from '../data/mockMatch.js';
 
@@ -10,8 +12,25 @@ export default function VoteScreen({
   onSelectTarget,
   onSubmitVote,
   onContinue,
+  isLive = false,
+  deadlineAt = null,
+  hasVoted = false,
+  isSubmitting = false,
+  connectionStatus = 'connected',
+  error = '',
 }) {
+  const [secondsLeft, setSecondsLeft] = useState(0);
+  useEffect(() => {
+    if (!isLive || !deadlineAt) return undefined;
+    const update = () => setSecondsLeft(Math.max(0, Math.ceil((Date.parse(deadlineAt) - Date.now()) / 1000)));
+    update();
+    const id = window.setInterval(update, 1000);
+    return () => window.clearInterval(id);
+  }, [isLive, deadlineAt]);
   const livingPlayers = room.players.filter((player) => player.isAlive !== false);
+  const ownPlayer = room.players.find((player) => player.id === room.currentPlayerId);
+  const cannotVote = isLive && (hasVoted || isSubmitting || secondsLeft === 0
+    || connectionStatus !== 'connected' || !ownPlayer?.isAlive);
   const voteTargetPlayers = livingPlayers.filter(
     (player) => player.id !== room.currentPlayerId,
   );
@@ -36,7 +55,7 @@ export default function VoteScreen({
 
         <section className={styles.content} id="vote">
           <div className={styles.heading}>
-            <p className={styles.eyebrow}>MEETING · BALLOT</p>
+            <p className={styles.eyebrow}>MEETING · BALLOT {isLive && `· ${secondsLeft}s remaining`}</p>
             <h1>{voteResult ? 'The vote is in.' : <>Who should leave<br /><span>the room?</span></>}</h1>
             <p className={styles.intro}>
               {voteResult
@@ -64,6 +83,7 @@ export default function VoteScreen({
                       className={`${styles.candidate} ${isSelected ? styles.selected : ''}`}
                       key={player.id}
                       onClick={() => onSelectTarget(player.id)}
+                      disabled={cannotVote}
                       type="button"
                     >
                       <span className={styles.candidateNumber}>{String(index + 1).padStart(2, '0')}</span>
@@ -81,6 +101,7 @@ export default function VoteScreen({
                 aria-pressed={isSkipSelected}
                 className={`${styles.skipButton} ${isSkipSelected ? styles.skipSelected : ''}`}
                 onClick={() => onSelectTarget(SKIP_VOTE)}
+                disabled={cannotVote}
                 type="button"
               >
                 <span aria-hidden="true">↷</span>
@@ -89,17 +110,22 @@ export default function VoteScreen({
               </button>
 
               <div className={styles.ballotFooter}>
-                <p>{selectedTargetId ? 'Your choice is selected. Submit to lock your ballot.' : 'Select a player or skip to continue.'}</p>
+                <p>{isLive && hasVoted ? 'Your ballot is saved. Waiting for the server result.'
+                  : selectedTargetId ? 'Your choice is selected. Submit to lock your ballot.'
+                    : 'Select a player or skip to continue.'}</p>
                 <button
                   className={styles.submitButton}
-                  disabled={!selectedTargetId}
+                  disabled={!selectedTargetId || cannotVote}
                   onClick={onSubmitVote}
                   type="button"
                 >
-                  Submit vote <span aria-hidden="true">→</span>
+                  {isSubmitting ? 'Submitting…' : 'Submit vote'} <span aria-hidden="true">→</span>
                 </button>
               </div>
-              <p className={styles.previewNote}>The other players’ ballots are simulated in this local preview.</p>
+              {error && <StatusMessage status="error">{error}</StatusMessage>}
+              <p className={styles.previewNote}>{isLive
+                ? 'Individual ballots remain private until the server resolves the vote.'
+                : 'The other players’ ballots are simulated in this local preview.'}</p>
             </section>
           ) : (
             <section className={styles.resultPanel} aria-labelledby="result-title" aria-live="polite">
@@ -107,12 +133,14 @@ export default function VoteScreen({
               <h2 id="result-title">
                 {voteResult.reason === 'tie' && 'The vote was tied.'}
                 {voteResult.reason === 'all-skipped' && 'Everyone skipped.'}
+                {voteResult.reason === 'no-votes' && 'No ballots were cast.'}
                 {voteResult.reason === 'skip-wins' && 'Skip received the most votes.'}
                 {voteResult.reason === 'ejected' && `${ejectedPlayer?.name ?? 'A player'} was ejected.`}
               </h2>
               <p className={styles.resultSummary}>
                 {voteResult.reason === 'tie' && 'No one leaves the room. The round returns to play.'}
-                {voteResult.reason === 'all-skipped' && 'No player received a vote, so no one leaves the room.'}
+                {voteResult.reason === 'all-skipped' && 'All ballots skipped ejection, so no one leaves the room.'}
+                {voteResult.reason === 'no-votes' && 'The voting deadline expired with no ballots. No one leaves the room.'}
                 {voteResult.reason === 'skip-wins' && 'The group chose not to eject anyone. The coding round will continue.'}
                 {voteResult.reason === 'ejected' && (voteResult.isImpostorEjected
                   ? 'The impostor was identified. The civilians win this match.'
@@ -135,12 +163,13 @@ export default function VoteScreen({
 
               {isLocalPlayerEjected ? (
                 <p className={styles.localEjection} role="status">
-                  Your preview player was ejected. The following result explains what happens next.
+                  {isLive ? 'You were ejected. You may still view the match result.'
+                    : 'Your preview player was ejected. The following result explains what happens next.'}
                 </p>
               ) : null}
 
               <button className={styles.continueButton} onClick={onContinue} type="button">
-                Continue to results
+                {isLive ? 'Continue' : 'Continue to results'}
                 <span aria-hidden="true">→</span>
               </button>
             </section>
@@ -149,7 +178,7 @@ export default function VoteScreen({
 
         <footer className={styles.footer}>
           <span>ONE BALLOT · PRIVATE UNTIL RESOLUTION</span>
-          <span>CODEMAFIA · LOCAL PREVIEW</span>
+          <span>CODEMAFIA · {isLive ? 'LIVE ROOM' : 'LOCAL PREVIEW'}</span>
         </footer>
       </div>
     </main>

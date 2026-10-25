@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import PlayerCard from '../components/PlayerCard.jsx';
 import StatusMessage from '../components/StatusMessage.jsx';
 import TestResults from '../components/TestResults.jsx';
+import SabotageObjectives from '../components/SabotageObjectives.jsx';
 import { loadEditorHistory, loadEditorSession, restoreEditorRevision } from '../api/editor.js';
 import { loadPublicFeedbackBundle, requestOfficialTestRun } from '../api/codeFeedback.js';
 import useCodeFeedback from '../hooks/useCodeFeedback.js';
@@ -21,12 +22,14 @@ function formatTime(seconds) {
 export default function LiveArena({ room, role, categoryName, roundNumber, totalRounds,
   deadlineAt, revisionId, connectionStatus, officialEvent, officialSnapshot, officialRuns,
   runStatusEvent,
+  ownObjectives = [], ownMeetingsUsed = 0,
   sendCommand, requestSnapshot }) {
   const [session, setSession] = useState(null);
   const [sessionError, setSessionError] = useState('');
   const [history, setHistory] = useState([]);
   const [historyError, setHistoryError] = useState('');
   const [restoreStatus, setRestoreStatus] = useState('');
+  const [restoreStatusKind, setRestoreStatusKind] = useState('info');
   const [restoring, setRestoring] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState(() => timeLeft(deadlineAt));
   const [collaborators, setCollaborators] = useState([]);
@@ -37,17 +40,23 @@ export default function LiveArena({ room, role, categoryName, roundNumber, total
   const [officialResult, setOfficialResult] = useState(null);
   const [officialStatus, setOfficialStatus] = useState('idle');
   const [officialError, setOfficialError] = useState('');
+  const [meetingBusy, setMeetingBusy] = useState(false);
+  const [meetingError, setMeetingError] = useState('');
+  const [finalizing, setFinalizing] = useState(false);
+  const [finalizeError, setFinalizeError] = useState('');
   const displayedOfficialResult = officialResult?.source_revision_id === revisionId
     ? officialResult : officialSnapshot ?? officialResult;
   const requestedRevisionRef = useRef(null);
   const ownPlayer = room.players.find((player) => player.id === room.currentPlayerId);
+  const latestRun = [...(officialRuns ?? [])].reverse()
+    .find((run) => run.source_revision_id === revisionId);
   const participant = useMemo(() => ({
     id: ownPlayer?.id, name: ownPlayer?.name,
     color: '#73d5b3',
   }), [ownPlayer?.id, ownPlayer?.name]);
   const editor = useCollaborativeEditor(session, participant, Boolean(session));
   const { feedback: provisional, run: runProvisional } = useCodeFeedback(
-    `${room.code}:${roundNumber}`, source,
+    `${room.code}:${roundNumber}`, source, feedbackBundle?.tests,
   );
 
   useEffect(() => {
@@ -184,11 +193,14 @@ export default function LiveArena({ room, role, categoryName, roundNumber, total
     if (!session || restoring || !editor.canEdit) return;
     setRestoring(true);
     setRestoreStatus('Restoring the selected revision…');
+    setRestoreStatusKind('info');
     try {
       await restoreEditorRevision(session, revision);
       setRestoreStatus('Revision restored. A new current revision was saved.');
+      setRestoreStatusKind('success');
     } catch (error) {
       setRestoreStatus(error.message);
+      setRestoreStatusKind('error');
     } finally {
       setRestoring(false);
     }
@@ -205,6 +217,34 @@ export default function LiveArena({ room, role, categoryName, roundNumber, total
     } catch (error) {
       setOfficialStatus('idle');
       setOfficialError(error.message || 'The official test request was rejected.');
+    }
+  }
+
+  async function handleCallMeeting() {
+    if (meetingBusy || ownMeetingsUsed > 0 || !ownPlayer?.isAlive) return;
+    setMeetingBusy(true);
+    setMeetingError('');
+    try {
+      await sendCommand({ name: 'call_emergency_meeting' });
+      requestSnapshot?.();
+    } catch (error) {
+      setMeetingError(error.message || 'The meeting could not be called.');
+    } finally {
+      setMeetingBusy(false);
+    }
+  }
+
+  async function handleFinalize() {
+    if (finalizing || !revisionId) return;
+    setFinalizing(true);
+    setFinalizeError('');
+    try {
+      await sendCommand({ name: 'finalize_solution', source_revision_id: revisionId });
+      requestSnapshot?.();
+    } catch (error) {
+      setFinalizeError(error.message || 'The verified solution could not be finalized.');
+    } finally {
+      setFinalizing(false);
     }
   }
 
@@ -227,18 +267,30 @@ export default function LiveArena({ room, role, categoryName, roundNumber, total
             <span className={`${styles.roleDot} ${role === 'impostor' ? styles.impostorDot : ''}`} aria-hidden="true" />
             <div><p className={styles.eyebrow}>YOUR ROLE</p><strong>{role === 'impostor' ? 'Impostor' : role === 'civilian' ? 'Civilian' : 'Waiting for role…'}</strong></div>
           </section>
+          {role === 'impostor' && <SabotageObjectives objectives={ownObjectives} />}
           <TestResults bundle={feedbackBundle} bundleError={bundleError}
             provisional={provisional} official={displayedOfficialResult}
             officialStatus={officialStatus} officialError={officialError}
             revisionId={revisionId}
             canRun={editor.canEdit && connectionStatus === 'connected' && secondsLeft > 0}
             onRunProvisional={() => runProvisional(feedbackBundle?.tests)}
-            onRunOfficial={handleOfficialRun} />
+            onRunOfficial={handleOfficialRun}
+            officialRunStatus={latestRun?.status}
+            canFinalize={connectionStatus === 'connected' && ownPlayer?.isAlive && secondsLeft > 0}
+            onFinalize={handleFinalize} isFinalizing={finalizing} />
+          {finalizeError && <StatusMessage status="error">{finalizeError}</StatusMessage>}
+          <button className={styles.meetingButton} type="button" onClick={handleCallMeeting}
+            disabled={meetingBusy || ownMeetingsUsed > 0 || !ownPlayer?.isAlive
+              || secondsLeft === 0 || connectionStatus !== 'connected'}>
+            {meetingBusy ? 'Calling meeting…' : ownMeetingsUsed > 0 ? 'Meeting already used'
+              : 'Call emergency meeting'}
+          </button>
+          {meetingError && <StatusMessage status="error">{meetingError}</StatusMessage>}
           <div className={styles.liveHistory}>
             <h2>Revision history</h2>
             <p>Current revision: <code>{revisionId || 'Waiting for server…'}</code></p>
             {historyError && <StatusMessage status="error">{historyError}</StatusMessage>}
-            {restoreStatus && <StatusMessage status={restoreStatus.startsWith('Revision restored') ? 'success' : 'info'}>{restoreStatus}</StatusMessage>}
+            {restoreStatus && <StatusMessage status={restoreStatusKind}>{restoreStatus}</StatusMessage>}
             {history.length === 0 ? <p>No saved edits yet.</p> : (
               <ol className={styles.historyList}>
                 {[...history].reverse().map((item) => {

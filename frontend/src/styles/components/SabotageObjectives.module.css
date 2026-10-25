@@ -1,0 +1,10 @@
+.panel { margin-top: 16px; padding: 15px; border: 1px solid rgb(255 120 94 / 35%); border-radius: 9px; background: rgb(255 120 94 / 7%); }
+.eyebrow { margin: 0 0 7px; color: #ffa18e; font-family: var(--font-mono); font-size: .57rem; letter-spacing: .09em; }
+.panel h2 { margin: 0; font-size: .9rem; }
+.note { color: #c6b6b3; font-size: .66rem; line-height: 1.5; }
+.list { display: grid; gap: 10px; margin: 12px 0 0; padding: 0; list-style: none; }
+.item { padding: 11px; border: 1px solid rgb(255 120 94 / 25%); border-radius: 7px; }
+.item p { margin: 8px 0 0; color: #e6d5d1; font-size: .69rem; line-height: 1.55; }
+.status { color: #f4c4b8; font-family: var(--font-mono); font-size: .56rem; text-transform: uppercase; }
+.status[data-status="completed"] { color: var(--color-mint); }
+@media (max-width: 720px) { .panel { padding: 12px; } }

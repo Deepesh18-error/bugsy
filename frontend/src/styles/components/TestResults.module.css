@@ -7,6 +7,9 @@
 .panelHeader button:hover:not(:disabled) { background: rgb(201 240 108 / 20%); }
 .panelHeader button:disabled { opacity: 0.5; cursor: not-allowed; }
 .panelHeader button:focus-visible { outline: 3px solid var(--color-lime); outline-offset: 2px; }
+.panel > button { margin-top: 10px; padding: 8px 10px; border: 1px solid var(--color-mint); border-radius: 6px; background: rgb(115 213 179 / 12%); color: var(--color-mint); cursor: pointer; font-size: .66rem; font-weight: 700; }
+.panel > button:disabled { cursor: not-allowed; opacity: .5; }
+.panel > button:focus-visible { outline: 3px solid var(--color-mint); outline-offset: 2px; }
 .provisionalLabel, .officialLabel { display: inline-block; margin-left: 3px; padding: 2px 4px; border-radius: 3px; color: #111a1d; font-family: var(--font-mono); font-size: 0.51rem; vertical-align: middle; }
 .provisionalLabel { background: #e7c46f; }
 .officialLabel { background: var(--color-mint); }

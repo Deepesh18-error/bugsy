@@ -15,14 +15,16 @@ export default function ChatPanel({
   maxLength = 180,
   className = '',
   messageStatus = '',
+  isLive = false,
 }) {
   const generatedId = useId();
   const titleId = `${generatedId}-title`;
   const inputId = `${generatedId}-input`;
   const [draft, setDraft] = useState('');
   const [notice, setNotice] = useState('');
+  const [sending, setSending] = useState(false);
 
-  function handleSubmit(event) {
+  async function handleSubmit(event) {
     event.preventDefault();
     const text = draft.trim();
 
@@ -36,9 +38,17 @@ export default function ChatPanel({
       return;
     }
 
-    onSendMessage(text);
-    setDraft('');
-    setNotice('Message added to this local preview.');
+    if (sending) return;
+    setSending(true);
+    try {
+      await onSendMessage(text);
+      setDraft('');
+      setNotice(isLive ? 'Message accepted by the server.' : 'Message added to this local preview.');
+    } catch (error) {
+      setNotice(error.message || 'The message could not be sent.');
+    } finally {
+      setSending(false);
+    }
   }
 
   return (
@@ -48,7 +58,7 @@ export default function ChatPanel({
           <p className={styles.eyebrow}>{eyebrow}</p>
           <h2 id={titleId}>{title}</h2>
         </div>
-        <span className={styles.localTag}>LOCAL</span>
+        <span className={styles.localTag}>{isLive ? 'LIVE' : 'LOCAL'}</span>
       </header>
 
       {messages.length === 0 ? (
@@ -77,6 +87,7 @@ export default function ChatPanel({
         <input
           id={inputId}
           maxLength={maxLength}
+          disabled={sending}
           onChange={(event) => {
             setDraft(event.target.value);
             setNotice('');
@@ -85,8 +96,8 @@ export default function ChatPanel({
           value={draft}
           autoComplete="off"
         />
-        <Button aria-label="Send message" size="small" variant="send" type="submit">
-          Send
+        <Button aria-label="Send message" size="small" variant="send" type="submit" disabled={sending}>
+          {sending ? 'Sending…' : 'Send'}
         </Button>
       </form>
 

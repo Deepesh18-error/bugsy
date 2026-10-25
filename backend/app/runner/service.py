@@ -9,7 +9,7 @@ from uuid import uuid4
 
 from app.challenges.loader import ChallengeLoadError, load_challenge
 from app.game.commands import RequestOfficialTestRun
-from app.game.models import GamePhase
+from app.game.models import GamePhase, OfficialRunStatus
 from app.rooms.repository import RoomStorageError, StoredRoom, editor_document_id
 from app.rooms.repository import RoomRepository
 from app.runner.contracts import RunnerEnqueueReceipt, RunnerJob, RunnerTestCase
@@ -143,6 +143,14 @@ class RunnerService:
                 tests=tests,
                 dedupe_key=dedupe_key,
             )
+            for progress in current.official_run_progress:
+                if (
+                    progress.source_revision_id == source_revision_id
+                    and progress.status is OfficialRunStatus.ERROR
+                ):
+                    failed_job = await self._runner.load_job(progress.run_id)
+                    if failed_job is not None and failed_job.dedupe_key == dedupe_key:
+                        await self._runner.release_deduplication(failed_job)
             receipt = await self._runner.enqueue_job(job)
         except (ValueError, ChallengeLoadError) as exc:
             raise RunnerUnavailable("The challenge cannot be prepared for official testing.") from exc

@@ -105,6 +105,17 @@ class RequestOfficialTestRun(GameCommand):
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
+class FinalizeSolution(GameCommand):
+    """Claim a civilian win for a still-current verified green revision."""
+
+    source_revision_id: str
+
+    def __post_init__(self) -> None:
+        GameCommand.__post_init__(self)
+        _require_non_blank(self.source_revision_id, "source_revision_id", max_length=128)
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
 class SendChatMessage(GameCommand):
     """Send bounded plain-text chat; rendering and rate limits are external."""
 
@@ -138,6 +149,7 @@ GameCommandType = (
     | CallEmergencyMeeting
     | CastPlayerVote
     | RequestOfficialTestRun
+    | FinalizeSolution
     | SendChatMessage
     | LeaveRoom
     | EndRoom

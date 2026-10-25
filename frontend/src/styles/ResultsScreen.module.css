@@ -29,6 +29,8 @@
 .primaryButton:hover { background: rgb(201 240 108 / 18%); }
 .secondaryButton { border-color: #43504a; background: transparent; color: #c5d0ca; }
 .secondaryButton:hover { background: rgb(255 255 255 / 4%); }
+.primaryButton:disabled, .secondaryButton:disabled { cursor: not-allowed; opacity: .55; }
+.primaryButton:focus-visible, .secondaryButton:focus-visible { outline: 3px solid var(--color-lime); outline-offset: 2px; }
 .previewNote { max-width: 610px; margin: 13px 0 0; color: #899790; font-size: 0.61rem; line-height: 1.5; }
 .footer { display: flex; justify-content: space-between; gap: 14px; padding-block: 18px; border-top: 1px solid var(--color-line); color: #82918b; font-size: 0.54rem; }
 

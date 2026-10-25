@@ -387,6 +387,26 @@ class MatchResult:
 
 
 @dataclass(frozen=True, slots=True)
+class VoteResolution:
+    """Public aggregate retained so reconnecting players can see the last vote."""
+
+    vote_counts: tuple[tuple[str, int], ...]
+    skip_count: int
+    ejected_player_id: str | None
+    was_tie: bool
+    resolved_at: datetime
+
+    def __post_init__(self) -> None:
+        if self.skip_count < 0 or any(count < 0 for _, count in self.vote_counts):
+            raise ValueError("vote counts must be non-negative")
+        if len({player_id for player_id, _ in self.vote_counts}) != len(self.vote_counts):
+            raise ValueError("vote targets must be unique")
+        if self.ejected_player_id is not None:
+            _require_non_blank(self.ejected_player_id, "ejected_player_id")
+        _require_utc_datetime(self.resolved_at, "resolved_at")
+
+
+@dataclass(frozen=True, slots=True)
 class MatchState:
     """Match-wide state that persists across its rounds."""
 
@@ -395,6 +415,7 @@ class MatchState:
     selected_category_id: str | None = None
     category_votes: tuple[Vote, ...] = ()
     player_votes: tuple[Vote, ...] = ()
+    last_vote_result: VoteResolution | None = None
     round_history: tuple[RoundState, ...] = ()
     current_round: RoundState | None = None
     result: MatchResult | None = None
@@ -431,6 +452,8 @@ class MatchState:
             raise ValueError("category_votes may contain only category ballots")
         if any(vote.kind is not VoteKind.PLAYER for vote in self.player_votes):
             raise ValueError("player_votes may contain only player ballots")
+        if self.last_vote_result is not None and not isinstance(self.last_vote_result, VoteResolution):
+            raise ValueError("last_vote_result must be a VoteResolution")
         if (self.meeting_started_at is None) != (self.paused_round_deadline is None):
             raise ValueError(
                 "meeting_started_at and paused_round_deadline must be set together"

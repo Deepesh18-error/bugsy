@@ -12,11 +12,20 @@ function formatTime(seconds) {
   return `${String(minutes).padStart(2, '0')}:${String(remainingSeconds).padStart(2, '0')}`;
 }
 
-export default function MeetingScreen({ room, categoryName, roundNumber, onProceedToVote }) {
+export default function MeetingScreen({ room, categoryName, roundNumber, onProceedToVote,
+  isLive = false, deadlineAt = null, chatMessages = [], onSendMessage,
+  connectionStatus = 'connected' }) {
   const [secondsLeft, setSecondsLeft] = useState(DISCUSSION_SECONDS);
   const [messages, setMessages] = useState(INITIAL_DISCUSSION);
 
   useEffect(() => {
+    if (isLive) {
+      const update = () => setSecondsLeft(deadlineAt
+        ? Math.max(0, Math.ceil((Date.parse(deadlineAt) - Date.now()) / 1000)) : 0);
+      update();
+      const intervalId = window.setInterval(update, 1000);
+      return () => window.clearInterval(intervalId);
+    }
     if (secondsLeft === 0) return undefined;
 
     const intervalId = window.setInterval(() => {
@@ -24,7 +33,7 @@ export default function MeetingScreen({ room, categoryName, roundNumber, onProce
     }, 1000);
 
     return () => window.clearInterval(intervalId);
-  }, [secondsLeft]);
+  }, [secondsLeft, isLive, deadlineAt]);
 
   function handleSendMessage(text) {
     const currentPlayer = room.players.find((player) => player.id === room.currentPlayerId);
@@ -91,11 +100,15 @@ export default function MeetingScreen({ room, categoryName, roundNumber, onProce
                 className={styles.discussionChat}
                 eyebrow="DISCUSSION THREAD"
                 emptyMessage="No discussion messages yet. Share an observation."
-                localLabel="Local preview discussion · messages are not sent to other players."
-                messages={messages}
-                onSendMessage={handleSendMessage}
+                localLabel={isLive ? 'Messages seen during this connection.'
+                  : 'Local preview discussion · messages are not sent to other players.'}
+                messages={isLive ? chatMessages : messages}
+                onSendMessage={isLive ? onSendMessage : handleSendMessage}
                 placeholder="Share an observation..."
                 title="Discussion messages"
+                isLive={isLive}
+                maxLength={isLive ? 500 : 180}
+                messageStatus={isLive && connectionStatus !== 'connected' ? 'Reconnecting to discussion…' : ''}
               />
             </section>
 
@@ -118,25 +131,29 @@ export default function MeetingScreen({ room, categoryName, roundNumber, onProce
                 <p>Talk about observable code changes and test results. The meeting does not identify who made a harmful edit.</p>
               </div>
 
-              <button className={styles.resumeButton} onClick={onProceedToVote} type="button">
+              {isLive ? <p className={styles.previewNote} role="status">
+                Voting opens automatically when the server discussion deadline arrives.
+              </p> : <button className={styles.resumeButton} onClick={onProceedToVote} type="button">
                 End discussion &amp; open vote <span aria-hidden="true">→</span>
-              </button>
+              </button>}
               <p className={styles.previewNote}>
-                Voting is the next phase. The local preview simulates the other players’ ballots when you submit yours.
+                {isLive ? 'The shared editor is paused during the meeting.'
+                  : 'Voting is the next phase. The local preview simulates the other players’ ballots when you submit yours.'}
               </p>
             </aside>
           </div>
 
           {secondsLeft === 0 && (
             <p className={styles.timeUp} role="status">
-              Discussion timer ended. Continue when the group is ready to vote.
+              {isLive ? 'Discussion ended. Waiting for the server to open voting…'
+                : 'Discussion timer ended. Continue when the group is ready to vote.'}
             </p>
           )}
         </section>
 
         <footer className={styles.footer}>
           <span>DISCUSS THE EVIDENCE. DO NOT ASSUME INTENT.</span>
-          <span>CODEMAFIA · LOCAL PREVIEW</span>
+          <span>CODEMAFIA · {isLive ? 'LIVE ROOM' : 'LOCAL PREVIEW'}</span>
         </footer>
       </div>
     </main>

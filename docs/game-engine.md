@@ -17,7 +17,8 @@ for one room before applying these functions or committing their results.
 | Coding round | Eligible player calls an emergency meeting | Discussion | `MeetingStarted` |
 | Discussion | Discussion deadline expires | Player vote | `PlayerVotingStarted` |
 | Player vote | All connected living voters finish or deadline expires | Coding round, or game over if impostor ejected | `PlayerVoteResolved`, possibly `PlayerEliminated` and `MatchEnded` |
-| Coding round | Trusted official result passes all required tests on the current revision | Game over, civilians win | `OfficialTestResultAccepted`, `MatchEnded` |
+| Coding round | Trusted official result passes all required tests on the current revision | Coding round; candidate win | `OfficialTestResultAccepted` |
+| Coding round | Connected living player finalizes that same current green revision before the deadline | Game over, civilians win | `MatchEnded` |
 | Coding round | Trusted verifier completes every assigned objective in the current round | Game over, impostor wins | Private `SabotageObjectiveVerified`, `MatchEnded` |
 | Coding round 1–3 | Round deadline expires | Round result | `RoundEnded` |
 | Round result | Coordinator supplies the next pinned challenge | Next coding round | `CodingRoundStarted` |
@@ -43,8 +44,9 @@ in any phase. A closed or expired room accepts no new player commands.
   text edits; collaborative editing belongs to a later phase.
 - `record_official_test_result` and `record_verified_sabotage_objective` accept
   trusted runner/verifier facts. Both require the current revision and an open
-  coding deadline. The challenge content supplies objective definitions; the
-  engine records the verifier's verdict and applies the win rule.
+  coding deadline. A complete official pass stays reversible until a living
+  player finalizes that exact revision. The challenge content supplies objective
+  definitions; the engine records the verifier's verdict and applies the win rule.
 - At the exact deadline (`now == due_at`), the deadline wins. Commands and
   trusted results received then are too late. A stale deadline ID cannot
   advance another phase. Room expiry takes priority when its timestamp is due.

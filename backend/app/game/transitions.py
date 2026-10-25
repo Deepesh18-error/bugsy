@@ -22,6 +22,7 @@ from .commands import (
     CastCategoryVote,
     CastPlayerVote,
     EndRoom,
+    FinalizeSolution,
     GameCommandType,
     LeaveRoom,
     RequestOfficialTestRun,
@@ -90,6 +91,7 @@ from .models import (
     TestPassEvidence,
     Vote,
     VoteKind,
+    VoteResolution,
 )
 from .outcomes import (
     RejectionCode,
@@ -236,6 +238,8 @@ def apply_command(
         return _cast_player_vote(state, command, now)
     if isinstance(command, RequestOfficialTestRun):
         return _request_test_run(state, command, now)
+    if isinstance(command, FinalizeSolution):
+        return _finalize_solution(state, command, now)
     if isinstance(command, SendChatMessage):
         return _send_chat(state, command, now)
     if isinstance(command, LeaveRoom):
@@ -493,6 +497,7 @@ def start_coding_round(
         round_history=completed_rounds,
         current_round=round_state,
         player_votes=(),
+        last_vote_result=None,
     )
     updated = replace(
         state,
@@ -572,6 +577,7 @@ def _call_meeting(
         paused_round_deadline=state.match.current_round.deadline,
         meeting_cooldown_until=meeting_cooldown_until,
         player_votes=(),
+        last_vote_result=None,
     )
     updated = replace(
         state,
@@ -726,9 +732,16 @@ def _resolve_player_vote(
         leaders = tuple(sorted(player_id for player_id, count in target_counts.items() if count == highest))
     else:
         leaders = ()
-    was_tie = len(leaders) > 1
-    ejected_id = leaders[0] if len(leaders) == 1 else None
+    was_tie = len(leaders) > 1 or (bool(leaders) and skip_count == highest)
+    ejected_id = leaders[0] if len(leaders) == 1 and skip_count < highest else None
     counts = tuple(sorted(target_counts.items()))
+    resolution = VoteResolution(
+        vote_counts=counts,
+        skip_count=skip_count,
+        ejected_player_id=ejected_id,
+        was_tie=was_tie,
+        resolved_at=now,
+    )
 
     events: list[GameEvent] = [
         PlayerVoteResolved(
@@ -741,7 +754,7 @@ def _resolve_player_vote(
         )
     ]
     players = list(state.players)
-    updated_match = state.match
+    updated_match = replace(state.match, last_vote_result=resolution)
     updated_phase = GamePhase.CODING_ROUND
     updated_deadline: GameDeadline | None = None
 
@@ -759,7 +772,7 @@ def _resolve_player_vote(
                 ended_at=now,
             )
             updated_match = replace(
-                state.match,
+                updated_match,
                 result=result,
                 player_votes=(),
                 meeting_started_at=None,
@@ -776,9 +789,9 @@ def _resolve_player_vote(
                 )
             )
         else:
-            updated_match, updated_deadline = _resume_round_after_meeting(state.match, now)
+            updated_match, updated_deadline = _resume_round_after_meeting(updated_match, now)
     else:
-        updated_match, updated_deadline = _resume_round_after_meeting(state.match, now)
+        updated_match, updated_deadline = _resume_round_after_meeting(updated_match, now)
 
     updated = replace(
         state,
@@ -1177,37 +1190,48 @@ def record_official_test_result(
         source_revision_id=result.source_revision_id,
         all_required_tests_passed=result.all_required_tests_passed,
     )
-    if result.all_required_tests_passed:
-        match_result = MatchResult(
-            winner=MatchWinner.CIVILIANS,
-            reason=MatchEndReason.REQUIRED_TESTS_PASSED,
-            round_number=current_round.number,
-            ended_at=now,
-        )
-        updated_match = replace(updated_match, result=match_result)
-        updated = replace(
-            state,
-            phase=GamePhase.GAME_OVER,
-            phase_deadline=None,
-            match=updated_match,
-        )
-        return _accepted(
-            updated,
-            accepted_event,
-            *((run_status_event,) if run_status_event is not None else ()),
-            MatchEnded(
-                occurred_at=now,
-                request_id=None,
-                winner=match_result.winner,
-                reason=match_result.reason,
-                round_number=match_result.round_number,
-            ),
-        )
-
     return _accepted(
         replace(state, match=updated_match),
         accepted_event,
         *((run_status_event,) if run_status_event is not None else ()),
+    )
+
+
+def _finalize_solution(
+    state: RoomState,
+    command: FinalizeSolution,
+    now: datetime,
+) -> TransitionOutcome:
+    """Commit a green candidate only while its exact revision is still current."""
+
+    if state.phase is not GamePhase.CODING_ROUND or state.match is None or state.match.current_round is None:
+        return _reject(state, RejectionCode.WRONG_PHASE, "A solution can only be finalized during coding.", command.request_id)
+    if not _deadline_is_open(state, now):
+        return _reject(state, RejectionCode.DEADLINE_PASSED, "The round deadline has passed.", command.request_id)
+    if _find_player(state, command.player_id, require_alive=True) is None:
+        return _reject(state, RejectionCode.PLAYER_NOT_CONNECTED, "Only a connected living player may finalize.", command.request_id)
+    current = state.match.current_round
+    official = current.official_test_result
+    if command.source_revision_id != current.current_source_revision_id:
+        return _reject(state, RejectionCode.STALE_REVISION, "The code revision changed.", command.request_id)
+    if official is None or official.source_revision_id != command.source_revision_id or not official.all_required_tests_passed:
+        return _reject(state, RejectionCode.INVALID_SELECTION, "The current revision has no complete official pass.", command.request_id)
+    result = MatchResult(
+        winner=MatchWinner.CIVILIANS,
+        reason=MatchEndReason.REQUIRED_TESTS_PASSED,
+        round_number=current.number,
+        ended_at=now,
+    )
+    updated_match = replace(state.match, result=result)
+    return _accepted(
+        replace(state, phase=GamePhase.GAME_OVER, phase_deadline=None, match=updated_match),
+        MatchEnded(
+            occurred_at=now,
+            request_id=command.request_id,
+            winner=result.winner,
+            reason=result.reason,
+            round_number=result.round_number,
+        ),
     )
 
 

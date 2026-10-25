@@ -21,7 +21,8 @@ function ResultList({ tests, outcomes, emptyLabel }) {
 
 /** Distinct panels prevent a local pass from looking like a match verdict. */
 export default function TestResults({ bundle, bundleError, provisional, official, officialStatus,
-  officialError, revisionId, canRun, onRunProvisional, onRunOfficial }) {
+  officialError, revisionId, canRun, onRunProvisional, onRunOfficial,
+  officialRunStatus = null, canFinalize = false, onFinalize, isFinalizing = false }) {
   const publicTests = bundle?.tests ?? [];
   const officialIsStale = official && official.source_revision_id !== revisionId;
   const provisionalOutcomes = provisional.status === 'complete' || provisional.status === 'stale'
@@ -38,7 +39,7 @@ export default function TestResults({ bundle, bundleError, provisional, official
           {provisional.status === 'running' ? 'Running…' : 'Run public checks'}
         </button>
       </div>
-      <p className={styles.detail}>Runs the current shared code in your browser. It cannot decide the match. Only run shared code from players you trust.</p>
+      <p className={styles.detail}>Runs public checks after editing settles. This browser result cannot decide the match. Only run shared code from players you trust.</p>
       {bundleError && <p className={styles.error} role="alert">{bundleError}</p>}
       {provisional.status === 'running' && <p className={styles.pending} role="status">Loading Python and checking the code…</p>}
       {provisional.status === 'stale' && <p className={styles.stale} role="status">Code changed. These browser results are stale; run again.</p>}
@@ -57,12 +58,20 @@ export default function TestResults({ bundle, bundleError, provisional, official
         </button>
       </div>
       <p className={styles.detail}>Tests the server-saved revision <code>{revisionId || 'pending'}</code>. Recent edits may still be saving. Hidden checks stay on the server.</p>
-      {officialStatus === 'waiting' && <p className={styles.pending} role="status">Request accepted. Waiting for the official result…</p>}
+      {officialStatus === 'waiting' && <p className={styles.pending} role="status">
+        {officialRunStatus === 'running' ? 'Official checks are running…' : 'Official checks are queued…'}
+      </p>}
       {officialError && <p className={styles.error} role="alert">{officialError}</p>}
       {officialIsStale && <p className={styles.stale} role="status">This official result belongs to an older revision.</p>}
       {official && !officialIsStale && <p className={official.all_required_tests_passed ? styles.pass : styles.fail} role="status">
-        {official.all_required_tests_passed ? 'All required server checks passed.' : 'The saved revision did not pass every required server check.'}
+        {official.all_required_tests_passed
+          ? 'All required server checks passed. This result is a candidate until a player finalizes the current revision.'
+          : 'The saved revision did not pass every required server check.'}
       </p>}
+      {official?.all_required_tests_passed && !officialIsStale && <button type="button"
+        onClick={onFinalize} disabled={!canFinalize || isFinalizing}>
+        {isFinalizing ? 'Finalizing…' : 'Finalize verified solution'}
+      </button>}
       <ResultList tests={officialOutcomes} outcomes={officialOutcomes} emptyLabel="No official result for this round yet." />
     </div>
   </section>;

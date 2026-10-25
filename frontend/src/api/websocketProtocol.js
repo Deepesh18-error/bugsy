@@ -48,6 +48,26 @@ const eventPayloadChecks = {
     && isPlayerId(payload.restored_by_player_id),
   OfficialTestRunRequested: (payload) => hasExactKeys(payload, ['source_revision_id'])
     && typeof payload.source_revision_id === 'string' && payload.source_revision_id.length > 0,
+  MatchEnded: (payload) => hasExactKeys(payload, ['winner', 'reason', 'round_number'])
+    && ['civilians', 'impostor'].includes(payload.winner)
+    && typeof payload.reason === 'string' && Number.isInteger(payload.round_number),
+  MeetingStarted: (payload) => hasExactKeys(payload, ['caller_player_id', 'discussion_deadline_at'])
+    && isPlayerId(payload.caller_player_id) && typeof payload.discussion_deadline_at === 'string',
+  PlayerVotingStarted: (payload) => hasExactKeys(payload, ['deadline_at'])
+    && typeof payload.deadline_at === 'string',
+  PlayerBallotStored: (payload) => hasExactKeys(payload, ['is_skip'])
+    && typeof payload.is_skip === 'boolean',
+  PlayerVoteResolved: (payload) => hasExactKeys(payload, [
+    'vote_counts', 'skip_count', 'ejected_player_id', 'was_tie',
+  ]) && isRecord(payload.vote_counts)
+    && Object.values(payload.vote_counts).every((count) => Number.isInteger(count) && count >= 0)
+    && Number.isInteger(payload.skip_count) && payload.skip_count >= 0
+    && (payload.ejected_player_id === null || isPlayerId(payload.ejected_player_id))
+    && typeof payload.was_tie === 'boolean',
+  ChatMessagePosted: (payload) => hasExactKeys(payload, ['player_id', 'message'])
+    && isPlayerId(payload.player_id) && typeof payload.message === 'string',
+  SabotageObjectiveVerified: (payload) => hasExactKeys(payload, ['objective_id', 'source_revision_id'])
+    && typeof payload.objective_id === 'string' && typeof payload.source_revision_id === 'string',
   OfficialTestRunStatusChanged: (payload) => hasExactKeys(payload, [
     'run_id', 'source_revision_id', 'status',
   ]) && typeof payload.run_id === 'string' && payload.run_id.length > 0

@@ -64,8 +64,8 @@ Each test has a stable `id`, a trusted `test_definition_id`, a visibility (`publ
 
 - A test result is attached to the exact immutable source revision that was tested.
 - A result is **current** only while the authoritative shared document is still at that revision. Any subsequent edit makes it stale for victory decisions, even if the text change appears unrelated.
-- All tests marked `required_for_civilian_win` must pass together on the same current, official runner result before the round deadline for the test-based civilian win condition to commit.
-- A passing result is not a permanent lock. Later edits can cause regressions, and the tests may be run again. Victory is committed only when the server accepts the qualifying result for the current revision.
+- All tests marked `required_for_civilian_win` must pass together on the same current, official runner result before the round deadline. This creates a candidate civilian win.
+- A passing result is not a permanent lock. A connected living player must explicitly finalize that exact current revision before the deadline to commit victory. Any edit clears the candidate and calls for another official run.
 - A result for an older revision can remain as historical feedback, but cannot decide the current winner.
 - Local browser feedback, if added, is provisional and must be labeled as such. It never counts as an official pass or a win.
 
@@ -127,6 +127,8 @@ Before a challenge version is accepted, reviewers verify:
 Start with the Counter challenge as the schema example. It should include a known correct solution, focused tests for its intended behavior, and at least one subtle sabotage objective that can be detected and repaired. Once that complete example has been reviewed, add a small authored set across the five supported categories. Do not add a user-generated content editor in this phase.
 
 The initial bank is accepted only when every included challenge can be selected by its explicit ID/version, has bounded official tests, has a known correct solution, and supports at least one reviewed sabotage objective.
+
+For the current playable prototype, only the version-pinned OOP Counter challenge is selectable. Four-round matches may reuse it, but each round starts from fresh code, a new document and a new deadline. Add reviewed challenges and trusted runner mappings before enabling other categories. The Counter challenge remains draft and is unavailable in production configuration.
 
 ## 9. Phase boundary
 

@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 const FEEDBACK_TIMEOUT_MS = 20_000;
+const AUTO_RUN_DEBOUNCE_MS = 800;
 
 /** Owns one disposable Python worker per run. terminate() stops a busy loop. */
-export default function useCodeFeedback(roundKey, source) {
+export default function useCodeFeedback(roundKey, source, autoTests = null) {
   const activeRef = useRef(null);
   const [feedback, setFeedback] = useState({ status: 'idle', outcomes: [], source: null });
 
@@ -68,6 +69,12 @@ export default function useCodeFeedback(roundKey, source) {
       finish({ status: 'error', outcomes: [], message: 'Could not start browser feedback.' });
     }
   }, [source, stopActive]);
+
+  useEffect(() => {
+    if (!Array.isArray(autoTests) || autoTests.length === 0 || !source.trim()) return undefined;
+    const timer = window.setTimeout(() => run(autoTests), AUTO_RUN_DEBOUNCE_MS);
+    return () => window.clearTimeout(timer);
+  }, [roundKey, source, autoTests, run]);
 
   return { feedback, run, stop: stopActive };
 }

@@ -21,6 +21,7 @@
 .candidateList { display: grid; gap: 8px; margin-top: 16px; }
 .candidate { min-height: 58px; align-items: center; gap: 12px; padding: 9px 12px; border: 1px solid #3a4845; border-radius: 8px; background: #1a252a; color: var(--color-text); cursor: pointer; text-align: left; }
 .candidate:hover { border-color: #718477; background: #202e31; }
+.candidate:disabled, .skipButton:disabled { cursor: not-allowed; opacity: .55; }
 .candidate.selected { border-color: var(--color-mint); background: rgb(115 213 179 / 8%); box-shadow: inset 3px 0 var(--color-mint); }
 .candidateNumber { width: 24px; color: #82918b; font-family: var(--font-mono); font-size: 0.58rem; }
 .avatar { display: grid; width: 32px; height: 32px; flex: 0 0 auto; place-items: center; border-radius: 8px; background: #34434a; color: #eee; font-family: var(--font-mono); font-size: 0.7rem; font-weight: 700; }
@@ -50,6 +51,7 @@
 .tallyRow strong { color: var(--color-lime); font-family: var(--font-mono); font-size: 0.64rem; white-space: nowrap; }
 .localEjection { margin: 14px 0 0; color: #ffad9c; font-size: 0.72rem; line-height: 1.5; }
 .continueButton { width: 100%; margin-top: 15px; }
+.continueButton:focus-visible, .candidate:focus-visible, .skipButton:focus-visible, .submitButton:focus-visible { outline: 3px solid var(--color-lime); outline-offset: 2px; }
 .footer { display: flex; justify-content: space-between; gap: 14px; padding-block: 18px; border-top: 1px solid var(--color-line); color: #82918b; font-size: 0.54rem; }
 
 @media (max-width: 600px) {

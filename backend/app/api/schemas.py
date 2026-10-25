@@ -51,6 +51,7 @@ class PublicPlayer(ApiModel):
 class OwnObjective(ApiModel):
     objective_id: str
     status: ObjectiveStatus
+    private_description: str
 
 
 class PublicTestOutcome(ApiModel):
@@ -76,6 +77,20 @@ class OfficialRunSummary(ApiModel):
     requested_at: datetime
 
 
+class MatchResultSummary(ApiModel):
+    winner: Literal["civilians", "impostor"]
+    reason: str
+    round_number: int
+
+
+class VoteResultSummary(ApiModel):
+    vote_counts: dict[str, int]
+    skip_count: int
+    ejected_player_id: str | None
+    was_tie: bool
+    resolved_at: datetime
+
+
 class RoomSnapshot(ApiModel):
     room_code: str
     phase: GamePhase
@@ -84,6 +99,8 @@ class RoomSnapshot(ApiModel):
     phase_deadline_at: datetime | None
     self_player_id: str
     own_category_vote_id: str | None
+    has_cast_player_vote: bool
+    own_meetings_used: int
     own_role: PlayerRole | None
     own_objectives: tuple[OwnObjective, ...]
     selected_category_id: str | None
@@ -95,6 +112,8 @@ class RoomSnapshot(ApiModel):
     current_source_revision_id: str | None
     official_result: OfficialResultSummary | None = None
     official_runs: tuple[OfficialRunSummary, ...] = ()
+    match_result: MatchResultSummary | None = None
+    last_vote_result: VoteResultSummary | None = None
     players: tuple[PublicPlayer, ...]
 
 
@@ -134,14 +153,23 @@ def build_room_response(room: RoomState, player_id: str) -> RoomResponse:
                 message=None if test.id in passed else test.safe_failure_message,
             ) for test in loaded.challenge.tests if test.visibility == "public"),
         )
-    own_objectives = (
-        tuple(
-            OwnObjective(objective_id=item.objective_id, status=item.status)
+    own_objectives = ()
+    if player.role is PlayerRole.IMPOSTOR and current_round is not None:
+        loaded_objectives = load_challenge(current_round.challenge_id, current_round.challenge_version)
+        if loaded_objectives.content_digest != current_round.challenge_content_digest:
+            raise ValueError("Pinned challenge content changed while projecting objectives.")
+        descriptions = {
+            objective.id: objective.private_description
+            for objective in loaded_objectives.challenge.sabotage_objectives
+        }
+        own_objectives = tuple(
+            OwnObjective(
+                objective_id=item.objective_id,
+                status=item.status,
+                private_description=descriptions[item.objective_id],
+            )
             for item in current_round.sabotage_objectives
         )
-        if player.role is PlayerRole.IMPOSTOR and current_round is not None
-        else ()
-    )
     official_runs = (
         tuple(
             OfficialRunSummary(
@@ -179,6 +207,10 @@ def build_room_response(room: RoomState, player_id: str) -> RoomResponse:
                 (vote.target_id for vote in match.category_votes if vote.voter_id == player_id),
                 None,
             ) if match else None,
+            has_cast_player_vote=any(
+                vote.voter_id == player_id for vote in match.player_votes
+            ) if match else False,
+            own_meetings_used=player.emergency_meetings_used,
             own_role=player.role,
             own_objectives=own_objectives,
             selected_category_id=match.selected_category_id if match else None,
@@ -190,6 +222,22 @@ def build_room_response(room: RoomState, player_id: str) -> RoomResponse:
             current_source_revision_id=current_round.current_source_revision_id if current_round else None,
             official_result=official_summary,
             official_runs=official_runs,
+            match_result=(
+                MatchResultSummary(
+                    winner=match.result.winner.value,
+                    reason=match.result.reason.value,
+                    round_number=match.result.round_number,
+                ) if match and match.result else None
+            ),
+            last_vote_result=(
+                VoteResultSummary(
+                    vote_counts=dict(match.last_vote_result.vote_counts),
+                    skip_count=match.last_vote_result.skip_count,
+                    ejected_player_id=match.last_vote_result.ejected_player_id,
+                    was_tie=match.last_vote_result.was_tie,
+                    resolved_at=match.last_vote_result.resolved_at,
+                ) if match and match.last_vote_result else None
+            ),
             players=public_players,
         )
     )

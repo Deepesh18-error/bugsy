@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import timedelta
 import importlib.util
 from pathlib import Path
@@ -12,6 +13,9 @@ from pydantic import ValidationError
 
 from app.api.schemas import build_room_response
 from app.game.commands import RequestOfficialTestRun
+from app.game.models import GamePhase, MatchEndReason, SabotageObjectiveProgress, TestPassEvidence
+from app.rooms.repository import StoredRoom
+from app.rooms.serialization import serialize_room
 from app.runner.contracts import (
     MAX_JOB_BYTES, RunnerResult, RunnerStatus, RunnerTestResult,
     RunnerEnqueueReceipt, RunnerQueueState, TestFailureKind,
@@ -104,9 +108,73 @@ class RunnerFlowTests(unittest.TestCase):
             run_immediate(processor.process(result.model_copy(update={"signature": "0" * 64})))
         self.rooms.change_revision("revision-2")
         self.assertTrue(run_immediate(processor.process(result)))
-        self.assertEqual(self.rooms.commits, 0)
+        self.assertEqual(self.rooms.commits, 1)
         self.assertIsNone(self.rooms.stored.state.match.current_round.official_test_result)
-        self.assertEqual(self.connections.public, [])
+        self.assertEqual(self.rooms.stored.state.match.current_round.official_run_progress[-1].status.value, "stale")
+        self.assertFalse(any(event.name == "OfficialTestResult" for _, event in self.connections.public))
+
+    def test_infrastructure_error_is_visible_and_allows_retry(self):
+        run_immediate(self.queue())
+        job = self.runner.job
+        result = RunnerResult(
+            run_id=job.run_id, room_code=job.room_code, match_id=job.match_id,
+            round_number=job.round_number, deadline_id=job.deadline_id,
+            challenge_id=job.challenge_id, challenge_version=job.challenge_version,
+            challenge_content_digest=job.challenge_content_digest,
+            source_revision_id=job.source_revision_id, status=RunnerStatus.RUNNER_ERROR,
+            started_at=job.requested_at, completed_at=job.requested_at,
+            tests=(), signature="0" * 64,
+        )
+        result = result.model_copy(update={"signature": sign_result(
+            result.model_dump(mode="json", exclude={"signature"}), KEY,
+        )})
+        processor = RunnerResultProcessor(self.rooms, self.runner, self.connections, signing_key=KEY)
+        self.assertTrue(run_immediate(processor.process(result)))
+        snapshot = build_room_response(self.rooms.stored.state, "player-1").room
+        self.assertEqual(snapshot.official_runs[-1].status.value, "error")
+        self.assertIsNone(snapshot.official_result)
+        self.assertIn(job.run_id, self.runner.released)
+
+    def test_private_objective_description_is_only_in_impostor_snapshot(self):
+        state = self.rooms.stored.state
+        objective_id = LOADED.challenge.sabotage_objectives[0].id
+        current = replace(state.match.current_round, sabotage_objectives=(
+            SabotageObjectiveProgress(objective_id=objective_id),
+        ))
+        state = replace(state, match=replace(state.match, current_round=current))
+        civilian = build_room_response(state, "player-1").room
+        impostor = build_room_response(state, "player-4").room
+        self.assertEqual(civilian.own_objectives, ())
+        self.assertEqual(impostor.own_objectives[0].objective_id, objective_id)
+        self.assertIn("decrement", impostor.own_objectives[0].private_description)
+        self.assertNotIn("private_description", civilian.model_dump_json())
+
+    def test_signed_regression_verifies_private_objective(self):
+        state = self.rooms.stored.state
+        objective = LOADED.challenge.sabotage_objectives[0]
+        earlier_pass = TestPassEvidence(
+            test_id=objective.verification.test_id,
+            source_revision_id="revision-before-sabotage",
+            run_id="prior-pass", completed_at=NOW - timedelta(seconds=1),
+        )
+        current = replace(state.match.current_round,
+            test_pass_evidence=(earlier_pass,),
+            sabotage_objectives=(SabotageObjectiveProgress(objective_id=objective.id),),
+        )
+        state = replace(state, match=replace(state.match, current_round=current))
+        self.rooms.stored = StoredRoom(state, serialize_room(state), 0)
+        run_immediate(self.queue())
+        result = signed_result(self.runner.job, fail_test_id=objective.verification.test_id)
+        processor = RunnerResultProcessor(self.rooms, self.runner, self.connections, signing_key=KEY)
+        self.assertTrue(run_immediate(processor.process(result)))
+        final = self.rooms.stored.state
+        self.assertEqual(final.phase, GamePhase.GAME_OVER)
+        self.assertEqual(final.match.result.reason, MatchEndReason.SABOTAGE_OBJECTIVES_COMPLETED)
+        objective_events = [event for _, _, event in self.connections.private
+                            if event.name == "SabotageObjectiveVerified"]
+        self.assertEqual(len(objective_events), 1)
+        self.assertFalse(any(event.name == "SabotageObjectiveVerified"
+                             for _, event in self.connections.public))
 
     def test_wire_result_rejects_coerced_pass_values(self):
         with self.assertRaises(ValidationError):

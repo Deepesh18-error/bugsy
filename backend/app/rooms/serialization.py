@@ -30,6 +30,7 @@ from app.game.models import (
     TestPassEvidence,
     Vote,
     VoteKind,
+    VoteResolution,
 )
 from app.rooms.repository import (
     CommandReceipt, EditorDocument, EditorRevision, EditorStorageLimitError, MAX_EDITOR_HISTORY_BYTES,
@@ -37,13 +38,15 @@ from app.rooms.repository import (
 )
 
 
-STORAGE_VERSION = 4
+STORAGE_VERSION = 5
 LEGACY_STORAGE_VERSION = 1
-PREVIOUS_STORAGE_VERSION = 3
+PREVIOUS_STORAGE_VERSION = 4
+OLDER_STORAGE_VERSION = 3
 INTERMEDIATE_STORAGE_VERSION = 2
 SUPPORTED_STORAGE_VERSIONS = (
     LEGACY_STORAGE_VERSION,
     INTERMEDIATE_STORAGE_VERSION,
+    OLDER_STORAGE_VERSION,
     PREVIOUS_STORAGE_VERSION,
     STORAGE_VERSION,
 )
@@ -121,6 +124,18 @@ def _vote(value: dict[str, Any]) -> Vote:
         target_id=value["target_id"],
         request_id=value["request_id"],
         cast_at=_date(value["cast_at"]),
+    )
+
+
+def _vote_resolution(value: dict[str, Any] | None) -> VoteResolution | None:
+    if value is None:
+        return None
+    return VoteResolution(
+        vote_counts=tuple((item[0], item[1]) for item in value["vote_counts"]),
+        skip_count=value["skip_count"],
+        ejected_player_id=value["ejected_player_id"],
+        was_tie=value["was_tie"],
+        resolved_at=_date(value["resolved_at"]),
     )
 
 
@@ -219,6 +234,7 @@ def _match(value: dict[str, Any] | None) -> MatchState | None:
         selected_category_id=value["selected_category_id"],
         category_votes=tuple(_vote(item) for item in value["category_votes"]),
         player_votes=tuple(_vote(item) for item in value["player_votes"]),
+        last_vote_result=_vote_resolution(value.get("last_vote_result")),
         round_history=tuple(_round(item) for item in value.get("round_history", [])),
         current_round=_round(value["current_round"]),
         result=_result(value["result"]),

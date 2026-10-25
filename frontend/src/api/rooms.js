@@ -40,13 +40,15 @@ export function requireRoomSnapshot(snapshot) {
   const isCategory = (value) => value === null || SERVER_CATEGORY_IDS.includes(value);
   const snapshotKeys = [
     'room_code', 'phase', 'capacity', 'expires_at', 'phase_deadline_at',
-    'self_player_id', 'own_category_vote_id', 'own_role', 'own_objectives',
+    'self_player_id', 'own_category_vote_id', 'has_cast_player_vote', 'own_meetings_used', 'own_role', 'own_objectives',
     'selected_category_id', 'round_number', 'round_ended_at', 'round_end_reason',
     'challenge_id', 'challenge_version', 'current_source_revision_id',
-    'official_result', 'official_runs', 'players',
+    'official_result', 'official_runs', 'match_result', 'last_vote_result', 'players',
   ];
   const playerKeys = ['player_id', 'display_name', 'connection', 'is_ready', 'is_alive', 'is_host'];
-  const objectiveKeys = ['objective_id', 'status'];
+  const objectiveKeys = ['objective_id', 'status', 'private_description'];
+  const matchResultKeys = ['winner', 'reason', 'round_number'];
+  const voteResultKeys = ['vote_counts', 'skip_count', 'ejected_player_id', 'was_tie', 'resolved_at'];
   const officialKeys = ['run_id', 'source_revision_id', 'status', 'all_required_tests_passed', 'tests'];
   const runKeys = ['run_id', 'source_revision_id', 'status', 'requested_at'];
   const resultTestKeys = ['test_id', 'name', 'passed', 'required_for_civilian_win', 'message'];
@@ -59,6 +61,9 @@ export function requireRoomSnapshot(snapshot) {
     || (snapshot.phase_deadline_at !== null && !isUtcTime(snapshot.phase_deadline_at))
     || typeof snapshot.self_player_id !== 'string' || !snapshot.self_player_id
     || !isCategory(snapshot.own_category_vote_id)
+    || typeof snapshot.has_cast_player_vote !== 'boolean'
+    || !Number.isInteger(snapshot.own_meetings_used)
+    || snapshot.own_meetings_used < 0
     || (snapshot.own_role !== null && !['civilian', 'impostor'].includes(snapshot.own_role))
     || !isCategory(snapshot.selected_category_id)
     || (snapshot.round_number !== null && (!Number.isInteger(snapshot.round_number)
@@ -87,7 +92,23 @@ export function requireRoomSnapshot(snapshot) {
     || !snapshot.own_objectives.every((objective) => isRecord(objective)
       && hasOnlyKeys(objective, objectiveKeys)
       && typeof objective.objective_id === 'string'
+      && typeof objective.private_description === 'string'
       && ['not_started', 'in_progress', 'completed'].includes(objective.status))
+    || (snapshot.match_result !== null && (!isRecord(snapshot.match_result)
+      || !hasOnlyKeys(snapshot.match_result, matchResultKeys)
+      || !['civilians', 'impostor'].includes(snapshot.match_result.winner)
+      || typeof snapshot.match_result.reason !== 'string'
+      || !Number.isInteger(snapshot.match_result.round_number)))
+    || (snapshot.last_vote_result !== null && (!isRecord(snapshot.last_vote_result)
+      || !hasOnlyKeys(snapshot.last_vote_result, voteResultKeys)
+      || !isRecord(snapshot.last_vote_result.vote_counts)
+      || !Object.values(snapshot.last_vote_result.vote_counts).every((count) => Number.isInteger(count) && count >= 0)
+      || !Number.isInteger(snapshot.last_vote_result.skip_count)
+      || snapshot.last_vote_result.skip_count < 0
+      || (snapshot.last_vote_result.ejected_player_id !== null
+        && typeof snapshot.last_vote_result.ejected_player_id !== 'string')
+      || typeof snapshot.last_vote_result.was_tie !== 'boolean'
+      || !isUtcTime(snapshot.last_vote_result.resolved_at)))
     || !Array.isArray(snapshot.official_runs)
     || snapshot.official_runs.length > 32
     || !snapshot.official_runs.every((run) => isRecord(run)

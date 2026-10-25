@@ -4,7 +4,7 @@ from dataclasses import replace
 from datetime import timedelta
 import unittest
 
-from app.game.commands import CastPlayerVote, RequestOfficialTestRun
+from app.game.commands import CastPlayerVote, FinalizeSolution, RequestOfficialTestRun
 from app.game.models import (
     ConnectionStatus,
     GamePhase,
@@ -90,7 +90,14 @@ class MatchScenarioTests(unittest.TestCase):
             after_failure.state, passing_result, NOW + timedelta(seconds=4)
         )
         self.assertIsInstance(final, TransitionAccepted)
-        self.assertEqual(final.state.phase, GamePhase.GAME_OVER)
+        self.assertEqual(final.state.phase, GamePhase.CODING_ROUND)
+        claimed = apply_command(
+            final.state,
+            FinalizeSolution(request_id="claim-win", player_id="p1", source_revision_id="revision-1"),
+            NOW + timedelta(seconds=5),
+        )
+        self.assertIsInstance(claimed, TransitionAccepted)
+        self.assertEqual(claimed.state.phase, GamePhase.GAME_OVER)
 
     def test_code_revision_change_makes_previous_pass_result_stale(self) -> None:
         state = make_coding_room()

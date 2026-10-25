@@ -1,4 +1,5 @@
 import styles from '../styles/ResultsScreen.module.css';
+import StatusMessage from '../components/StatusMessage.jsx';
 
 export default function ResultsScreen({
   roomCode,
@@ -7,6 +8,12 @@ export default function ResultsScreen({
   result,
   onContinue,
   onRematch,
+  isLive = false,
+  isHost = false,
+  isBusy = false,
+  error = '',
+  messageStatus = 'error',
+  connectionStatus = 'connected',
 }) {
   const isMatchResult = result.type === 'match';
   const resultLabel = isMatchResult ? 'MATCH COMPLETE' : 'ROUND COMPLETE';
@@ -59,26 +66,34 @@ export default function ResultsScreen({
           </section>
 
           <div className={styles.actions}>
-            <button className={styles.primaryButton} onClick={onContinue} type="button">
-              {result.continueLabel} <span aria-hidden="true">→</span>
+            <button className={styles.primaryButton} onClick={onContinue} type="button"
+              disabled={isLive && (isBusy || connectionStatus !== 'connected' || (!isMatchResult && !isHost))}>
+              {isBusy ? 'Saving…' : isLive && !isMatchResult && !isHost ? 'Waiting for host'
+                : result.continueLabel} <span aria-hidden="true">→</span>
             </button>
             {isMatchResult && (
-              <button className={styles.secondaryButton} onClick={onRematch} type="button">
-                Play another match <span aria-hidden="true">↻</span>
+              <button className={styles.secondaryButton} onClick={onRematch} type="button"
+                disabled={isLive && (isBusy || connectionStatus !== 'connected')}>
+                {isLive ? 'Request rematch' : 'Play another match'} <span aria-hidden="true">↻</span>
               </button>
             )}
           </div>
 
-          <p className={styles.previewNote}>
+          {error && <StatusMessage status={messageStatus}>{error}</StatusMessage>}
+
+          {!isLive && <p className={styles.previewNote}>
             {isMatchResult
               ? 'Match outcomes and rematches are local preview behavior. The server will own the real result.'
               : 'This round result is a local preview. The arena state is preserved until you continue.'}
-          </p>
+          </p>}
+          {isLive && !isMatchResult && !isHost && <p className={styles.previewNote} role="status">
+            The host starts the next round. You will move there with the room.
+          </p>}
         </section>
 
         <footer className={styles.footer}>
           <span>BUILD TOGETHER. TRUST CAREFULLY.</span>
-          <span>CODEMAFIA · LOCAL PREVIEW</span>
+          <span>CODEMAFIA · {isLive ? 'LIVE ROOM' : 'LOCAL PREVIEW'}</span>
         </footer>
       </div>
     </main>

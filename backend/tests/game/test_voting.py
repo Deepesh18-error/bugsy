@@ -120,6 +120,21 @@ class VotingTests(unittest.TestCase):
         self.assertEqual(resolution.vote_counts, ())
         self.assertIsNone(resolution.ejected_player_id)
 
+    def test_skip_tie_blocks_an_ejection_and_is_saved_for_reconnect(self) -> None:
+        state = make_voting_room()
+        ballots = (("p1", None), ("p2", None), ("p3", "p4"), ("p4", "p4"))
+        for index, (voter, target) in enumerate(ballots):
+            result = apply_command(
+                state,
+                CastPlayerVote(request_id=f"skip-tie-{index}", player_id=voter, target_player_id=target),
+                NOW + timedelta(seconds=index),
+            )
+            state = result.state
+        self.assertEqual(state.phase, GamePhase.CODING_ROUND)
+        self.assertIsNone(state.match.last_vote_result.ejected_player_id)
+        self.assertTrue(state.match.last_vote_result.was_tie)
+        self.assertEqual(state.match.last_vote_result.skip_count, 2)
+
 
 if __name__ == "__main__":
     unittest.main()

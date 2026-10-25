@@ -13,7 +13,7 @@ from app.api.websocket_schemas import (
     ClientCommand, ServerAcknowledgment, ServerError, ServerEvent,
 )
 from app.game.commands import (
-    CallEmergencyMeeting, CastCategoryVote, CastPlayerVote, EndRoom,
+    CallEmergencyMeeting, CastCategoryVote, CastPlayerVote, EndRoom, FinalizeSolution,
     LeaveRoom, RequestOfficialTestRun, RequestRematch, SendChatMessage,
     SetReady, StartMatch, StartNextRound,
 )
@@ -53,6 +53,7 @@ def _game_command(message: ClientCommand, player_id: str):
         case "call_emergency_meeting": return CallEmergencyMeeting(**common)
         case "cast_player_vote": return CastPlayerVote(**common, target_player_id=action.target_player_id)
         case "request_official_test_run": return RequestOfficialTestRun(**common, source_revision_id=action.source_revision_id)
+        case "finalize_solution": return FinalizeSolution(**common, source_revision_id=action.source_revision_id)
         case "send_chat_message": return SendChatMessage(**common, message=action.message)
         case "leave_room": return LeaveRoom(**common)
         case "end_room": return EndRoom(**common)
@@ -450,6 +451,8 @@ class RoomCoordinator:
     ) -> None:
         """Debounce saved edits; revision-level Redis dedupe also coalesces manual runs."""
 
+        if self._runner_service is None:
+            return
         prior = self._automatic_test_tasks.pop(document_id, None)
         if prior is not None:
             prior.cancel()

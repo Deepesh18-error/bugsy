@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 
+from app.challenges.loader import load_challenge
 from app.game.models import (
     DeadlineKind, GameDeadline, GamePhase, MatchState, PlayerRole,
     PlayerState, RoomState, RoundState,
@@ -17,10 +18,11 @@ NOW = datetime.now(timezone.utc).replace(microsecond=0)
 
 
 def coding_room(*, revision_id: str = "seed-a", source_result=None) -> RoomState:
+    loaded = load_challenge("oop.counter", "1.0.0")
     deadline = GameDeadline("coding-a", DeadlineKind.CODING_ROUND, NOW + timedelta(minutes=10))
     current = RoundState(
         number=1, category_id="object-oriented", challenge_id="oop.counter",
-        challenge_version="1.0.0", challenge_content_digest="sha256:fixture",
+        challenge_version="1.0.0", challenge_content_digest=loaded.content_digest,
         started_at=NOW - timedelta(seconds=5), deadline=deadline,
         current_source_revision_id=revision_id, official_test_result=source_result,
     )

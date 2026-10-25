@@ -4,6 +4,7 @@ from dataclasses import replace
 from datetime import timedelta
 import unittest
 
+from app.challenges.loader import load_challenge
 from app.game.events import (
     PlayerReadinessChanged, PlayerRoleAssigned, SabotageObjectiveVerified,
 )
@@ -56,16 +57,18 @@ class DeliveryPrivacyTests(unittest.TestCase):
 
     def test_snapshot_contains_only_the_recipients_private_state(self) -> None:
         room = make_room()
+        loaded = load_challenge("oop.counter", "1.0.0")
         players = (
             replace(room.players[0], role=PlayerRole.CIVILIAN),
             replace(room.players[1], role=PlayerRole.IMPOSTOR),
         )
         deadline = GameDeadline("round-1", DeadlineKind.CODING_ROUND, NOW + timedelta(minutes=5))
         round_state = RoundState(
-            number=1, category_id="object-oriented", challenge_id="counter",
-            challenge_version="1.0.0", challenge_content_digest="sha256:example",
+            number=1, category_id="object-oriented", challenge_id=loaded.challenge.id,
+            challenge_version=loaded.challenge.version,
+            challenge_content_digest=loaded.content_digest,
             started_at=NOW, deadline=deadline, current_source_revision_id="revision-1",
-            sabotage_objectives=(SabotageObjectiveProgress(objective_id="objective-1"),),
+            sabotage_objectives=(SabotageObjectiveProgress(objective_id="regress-decrement"),),
         )
         room = replace(room, players=players, phase=GamePhase.CODING_ROUND,
                        phase_deadline=deadline, match=MatchState(round_number=1, current_round=round_state))
@@ -74,6 +77,10 @@ class DeliveryPrivacyTests(unittest.TestCase):
         self.assertEqual(civilian["own_role"], "civilian")
         self.assertEqual(civilian["own_objectives"], [])
         self.assertEqual(impostor["own_role"], "impostor")
-        self.assertEqual(impostor["own_objectives"][0]["objective_id"], "objective-1")
+        self.assertEqual(impostor["own_objectives"][0]["objective_id"], "regress-decrement")
+        self.assertEqual(
+            impostor["own_objectives"][0]["private_description"],
+            loaded.challenge.sabotage_objectives[0].private_description,
+        )
         self.assertTrue(all("role" not in player and "objectives" not in player
                             for player in civilian["players"] + impostor["players"]))

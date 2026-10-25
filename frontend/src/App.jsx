@@ -42,6 +42,53 @@ const LIVE_CATEGORIES = CATEGORIES.map((category) => ({
   id: LIVE_CATEGORY_IDS[category.id] ?? category.id,
 })).filter((category) => category.id === 'object-oriented');
 
+function liveVoteResult(snapshot) {
+  const vote = snapshot?.last_vote_result;
+  if (!vote) return null;
+  const counts = { ...vote.vote_counts, [SKIP_VOTE]: vote.skip_count };
+  const hasCandidateVotes = Object.values(vote.vote_counts).some((count) => count > 0);
+  const reason = vote.ejected_player_id ? 'ejected'
+    : vote.was_tie ? 'tie'
+      : vote.skip_count === 0 && !hasCandidateVotes ? 'no-votes'
+        : !hasCandidateVotes ? 'all-skipped' : 'skip-wins';
+  return {
+    reason,
+    voteCounts: counts,
+    ejectedPlayerId: vote.ejected_player_id,
+    isImpostorEjected: snapshot.match_result?.reason === 'impostor_ejected',
+  };
+}
+
+function liveResultView(snapshot) {
+  if (snapshot?.phase === 'round_result') {
+    return {
+      type: 'round', action: 'next-round',
+      headline: `Round ${snapshot.round_number} is complete.`,
+      description: 'The coding deadline expired. The host may start the next round.',
+      summaryTitle: 'Round deadline reached',
+      summary: 'Roles stay assigned. The next round uses a fresh editor document and deadline.',
+      outcomeLabel: 'ROUND ENDED', continueLabel: 'Start next round',
+    };
+  }
+  const match = snapshot?.match_result;
+  if (!match) return null;
+  const reason = {
+    required_tests_passed: 'The group finalized a verified solution.',
+    impostor_ejected: 'The vote ejected the impostor.',
+    impostor_departed: 'The impostor left the match.',
+    sabotage_objectives_completed: 'The impostor completed the verified sabotage objective.',
+    final_deadline_survived: 'The impostor survived the final round deadline.',
+  }[match.reason] || 'The server resolved the match.';
+  return {
+    type: 'match', action: 'finish',
+    headline: match.winner === 'civilians' ? 'The civilians win.' : 'The impostor wins.',
+    description: reason,
+    summaryTitle: 'Server-verified result', summary: reason,
+    outcomeLabel: match.winner === 'civilians' ? 'CIVILIAN WIN' : 'IMPOSTOR WIN',
+    continueLabel: 'Leave room',
+  };
+}
+
 export default function App() {
   const [screen, setScreen] = useState('welcome');
   const [room, setRoom] = useState(null);
@@ -67,6 +114,14 @@ export default function App() {
   const [roundNumber, setRoundNumber] = useState(1);
   const [gameResult, setGameResult] = useState(null);
   const [matchSeed, setMatchSeed] = useState(0);
+  const [liveVoteSelection, setLiveVoteSelection] = useState(null);
+  const [liveVoteBusy, setLiveVoteBusy] = useState(false);
+  const [liveVoteError, setLiveVoteError] = useState('');
+  const [liveVoteDismissedAt, setLiveVoteDismissedAt] = useState(null);
+  const [liveResultBusy, setLiveResultBusy] = useState(false);
+  const [liveResultMessage, setLiveResultMessage] = useState('');
+  const [liveResultMessageStatus, setLiveResultMessageStatus] = useState('info');
+  const [liveChatMessages, setLiveChatMessages] = useState([]);
   const liveRoomCode = roomMode === 'live' ? room?.code : null;
   const liveSocket = useRoomSocket(liveRoomCode);
   const previousLivePlayers = useRef(null);
@@ -123,6 +178,27 @@ export default function App() {
       usedFallback: payload.used_fallback,
     });
   }, [roomMode, liveRoomCode, liveSocket.lastEvent]);
+
+  useEffect(() => {
+    if (roomMode !== 'live' || liveSocket.lastEvent?.name !== 'ChatMessagePosted') return;
+    const event = liveSocket.lastEvent;
+    const player = room?.players.find((item) => item.id === event.payload.player_id);
+    setLiveChatMessages((items) => items.some((item) => item.id === `${event.sequence}:${event.payload.player_id}`)
+      ? items : [...items, {
+      id: `${event.sequence}:${event.payload.player_id}`,
+      name: player?.name || 'Player', tone: player?.tone || 'mint',
+      text: event.payload.message,
+      isYou: event.payload.player_id === room?.currentPlayerId,
+    }].slice(-100));
+  }, [roomMode, liveSocket.lastEvent, room?.currentPlayerId, room?.players]);
+
+  useEffect(() => {
+    if (roomMode === 'live' && liveRoomSnapshot?.phase === 'meeting_discussion') {
+      setLiveVoteSelection(null);
+      setLiveVoteError('');
+      setLiveVoteDismissedAt(null);
+    }
+  }, [roomMode, liveRoomSnapshot?.phase]);
 
   useEffect(() => {
     if (roomMode === 'live' && liveRoomSnapshot?.own_category_vote_id) {
@@ -262,6 +338,73 @@ export default function App() {
       setCategoryVoteMessageStatus('error');
     } finally {
       setIsCategorySubmitting(false);
+    }
+  }
+
+  async function handleLiveChat(text) {
+    if (liveSocket.status !== 'connected') throw new Error('Reconnecting to the room.');
+    await liveSocket.sendCommand({ name: 'send_chat_message', message: text });
+  }
+
+  async function handleLiveVote() {
+    if (!liveVoteSelection || liveVoteBusy || liveRoomSnapshot?.has_cast_player_vote
+      || liveRoomSnapshot?.phase !== 'player_vote') return;
+    setLiveVoteBusy(true);
+    setLiveVoteError('');
+    try {
+      await liveSocket.sendCommand({
+        name: 'cast_player_vote',
+        target_player_id: liveVoteSelection === SKIP_VOTE ? null : liveVoteSelection,
+      });
+      liveSocket.requestSnapshot();
+    } catch (error) {
+      setLiveVoteError(error.message || 'The server could not accept your vote.');
+    } finally {
+      setLiveVoteBusy(false);
+    }
+  }
+
+  async function handleLiveResultContinue() {
+    if (liveRoomSnapshot?.phase === 'game_over') {
+      setLiveResultBusy(true);
+      try {
+        await leaveRoom();
+        resetToWelcome();
+      } catch (error) {
+        setLiveResultMessage(error.message || 'Could not leave the room.');
+        setLiveResultMessageStatus('error');
+        setLiveResultBusy(false);
+      }
+      return;
+    }
+    if (liveRoomSnapshot?.phase !== 'round_result' || liveResultBusy) return;
+    setLiveResultBusy(true);
+    setLiveResultMessage('');
+    try {
+      await liveSocket.sendCommand({ name: 'start_next_round' });
+      liveSocket.requestSnapshot();
+    } catch (error) {
+      setLiveResultMessage(error.message || 'The next round could not start.');
+      setLiveResultMessageStatus('error');
+    } finally {
+      setLiveResultBusy(false);
+    }
+  }
+
+  async function handleLiveRematch() {
+    if (liveRoomSnapshot?.phase !== 'game_over' || liveResultBusy) return;
+    setLiveResultBusy(true);
+    setLiveResultMessage('');
+    try {
+      await liveSocket.sendCommand({ name: 'request_rematch' });
+      liveSocket.requestSnapshot();
+      setLiveResultMessage('Rematch requested. Waiting for the other connected players.');
+      setLiveResultMessageStatus('success');
+    } catch (error) {
+      setLiveResultMessage(error.message || 'The rematch request was rejected.');
+      setLiveResultMessageStatus('error');
+    } finally {
+      setLiveResultBusy(false);
     }
   }
 
@@ -519,6 +662,12 @@ export default function App() {
     setRoundNumber(1);
     setGameResult(null);
     setMatchSeed(0);
+    setLiveVoteSelection(null);
+    setLiveVoteError('');
+    setLiveVoteDismissedAt(null);
+    setLiveResultMessage('');
+    setLiveResultMessageStatus('info');
+    setLiveChatMessages([]);
     setScreen('welcome');
   }
 
@@ -547,6 +696,11 @@ export default function App() {
     const liveSelectedCategory = LIVE_CATEGORIES.find(
       (category) => category.id === liveRoomSnapshot?.selected_category_id,
     );
+    const resolvedVote = liveRoomSnapshot?.last_vote_result;
+    const showResolvedVote = resolvedVote
+      && liveVoteDismissedAt !== resolvedVote.resolved_at
+      && ((phase === 'game_over' && liveRoomSnapshot?.match_result?.reason === 'impostor_ejected')
+        || (phase === 'coding_round' && Date.now() - Date.parse(resolvedVote.resolved_at) < 20_000));
 
     if (phase === 'category_vote' || (phase === 'role_reveal' && liveResult)) {
       return (
@@ -585,6 +739,53 @@ export default function App() {
       );
     }
 
+    if (phase === 'meeting_discussion') {
+      return <MeetingScreen
+        isLive room={room}
+        categoryName={liveSelectedCategory?.name ?? 'Coding challenge'}
+        roundNumber={liveRoomSnapshot?.round_number ?? 1}
+        deadlineAt={liveRoomSnapshot?.phase_deadline_at}
+        chatMessages={liveChatMessages}
+        onSendMessage={handleLiveChat}
+        connectionStatus={liveSocket.status}
+      />;
+    }
+
+    if (phase === 'player_vote' || showResolvedVote) {
+      const result = showResolvedVote ? liveVoteResult(liveRoomSnapshot) : null;
+      return <VoteScreen
+        isLive room={room}
+        selectedTargetId={liveVoteSelection}
+        voteCounts={result?.voteCounts ?? {}}
+        voteResult={result}
+        isLocalPlayerEjected={result?.ejectedPlayerId === room.currentPlayerId}
+        onSelectTarget={setLiveVoteSelection}
+        onSubmitVote={handleLiveVote}
+        onContinue={() => setLiveVoteDismissedAt(resolvedVote?.resolved_at ?? null)}
+        deadlineAt={liveRoomSnapshot?.phase_deadline_at}
+        hasVoted={Boolean(liveRoomSnapshot?.has_cast_player_vote)}
+        isSubmitting={liveVoteBusy}
+        connectionStatus={liveSocket.status}
+        error={liveVoteError}
+      />;
+    }
+
+    if (phase === 'round_result' || phase === 'game_over') {
+      const result = liveResultView(liveRoomSnapshot);
+      if (result) return <ResultsScreen
+        isLive roomCode={room.code}
+        roundNumber={liveRoomSnapshot?.round_number ?? 1}
+        totalRounds={4} result={result}
+        onContinue={handleLiveResultContinue}
+        onRematch={handleLiveRematch}
+        isHost={Boolean(room.players.find((player) => player.id === room.currentPlayerId)?.isHost)}
+        isBusy={liveResultBusy}
+        error={liveResultMessage}
+        messageStatus={liveResultMessageStatus}
+        connectionStatus={liveSocket.status}
+      />;
+    }
+
     if (phase === 'coding_round' && liveRoomSnapshot?.round_number) {
       return <ArenaScreen
         key={`${room.code}:${liveRoomSnapshot.round_number}`}
@@ -598,6 +799,8 @@ export default function App() {
         revisionId={liveRoomSnapshot.current_source_revision_id}
         officialSnapshot={liveRoomSnapshot.official_result}
         officialRuns={liveRoomSnapshot.official_runs}
+        ownObjectives={liveRoomSnapshot.own_objectives}
+        ownMeetingsUsed={liveRoomSnapshot.own_meetings_used}
         connectionStatus={liveSocket.status}
         officialEvent={liveSocket.lastOfficialResult}
         runStatusEvent={liveSocket.lastEvent}

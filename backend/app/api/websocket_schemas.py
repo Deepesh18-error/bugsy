@@ -63,6 +63,11 @@ class RequestOfficialTestRunAction(WireModel):
     source_revision_id: ShortToken
 
 
+class FinalizeSolutionAction(WireModel):
+    name: Literal["finalize_solution"]
+    source_revision_id: ShortToken
+
+
 class SendChatMessageAction(WireModel):
     name: Literal["send_chat_message"]
     message: Annotated[str, StringConstraints(min_length=1, max_length=500)]
@@ -88,6 +93,7 @@ GameAction = Annotated[
     | CallEmergencyMeetingAction
     | CastPlayerVoteAction
     | RequestOfficialTestRunAction
+    | FinalizeSolutionAction
     | SendChatMessageAction
     | LeaveRoomAction
     | EndRoomAction

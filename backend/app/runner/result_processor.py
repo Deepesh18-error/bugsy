@@ -170,8 +170,10 @@ class RunnerResultProcessor:
                     )
                     if isinstance(failed, TransitionAccepted):
                         if failed.state == state:
+                            await self._runner.release_deduplication(job)
                             return True
                         if await self._commit_transition(stored, job.room_code, failed, None):
+                            await self._runner.release_deduplication(job)
                             return True
                         continue
                     return True

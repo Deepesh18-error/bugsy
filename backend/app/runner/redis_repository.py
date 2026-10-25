@@ -49,6 +49,13 @@ redis.call('XDEL', KEYS[1], ARGV[2])
 return 1
 """
 
+_RELEASE_DEDUPE = """
+if redis.call('GET', KEYS[1]) == ARGV[1] then
+    return redis.call('DEL', KEYS[1])
+end
+return 0
+"""
+
 
 def _job_key(run_id: str) -> str:
     if re.fullmatch(r"[0-9a-f]{32}", run_id) is None:
@@ -116,6 +123,16 @@ class RedisRunnerRepository:
             return RunnerJob.model_validate_json(raw)
         except (ValidationError, ValueError, TypeError) as exc:
             raise RunnerStorageError("Stored runner job is invalid.") from exc
+
+    async def release_deduplication(self, job: RunnerJob) -> None:
+        """Allow retry after a verified infrastructure failure of this run."""
+
+        try:
+            await self._client.eval(
+                _RELEASE_DEDUPE, 1, _dedupe_key(job.dedupe_key), job.run_id,
+            )
+        except RedisError as exc:
+            raise RunnerStorageError("Runner retry state is unavailable.") from exc
 
     async def ensure_job_group(self, group: str = JOB_GROUP) -> None:
         try:

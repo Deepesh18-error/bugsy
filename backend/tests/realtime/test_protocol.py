@@ -18,6 +18,7 @@ class ProtocolTests(unittest.TestCase):
             ({"version": 1, "type": "ping", "nonce": "n1"}, ClientPing),
             ({"version": 1, "type": "snapshot_request", "request_id": "r1"}, ClientSnapshotRequest),
             ({"version": 1, "type": "command", "request_id": "r2", "action": {"name": "set_ready", "ready": True}}, ClientCommand),
+            ({"version": 1, "type": "command", "request_id": "r3", "action": {"name": "finalize_solution", "source_revision_id": "revision-1"}}, ClientCommand),
         )
         for payload, expected_type in examples:
             with self.subTest(payload=payload):
@@ -55,4 +56,11 @@ class ProtocolTests(unittest.TestCase):
             client_message_adapter.validate_python({
                 "version": 1, "type": "command", "request_id": "r1",
                 "player_id": "player-1", "action": {"name": "set_ready", "ready": True},
+            })
+
+    def test_finalization_requires_a_saved_revision_id(self) -> None:
+        with self.assertRaises(ValidationError):
+            client_message_adapter.validate_python({
+                "version": 1, "type": "command", "request_id": "finalize-1",
+                "action": {"name": "finalize_solution"},
             })

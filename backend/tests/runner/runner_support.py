@@ -86,6 +86,7 @@ class FakeRooms:
 class FakeRunner:
     def __init__(self) -> None:
         self.job = None
+        self.released = []
 
     async def enqueue_job(self, job):
         self.job = job
@@ -94,6 +95,9 @@ class FakeRunner:
 
     async def load_job(self, run_id):
         return self.job if self.job and self.job.run_id == run_id else None
+
+    async def release_deduplication(self, job):
+        self.released.append(job.run_id)
 
 
 class FakeConnections:
