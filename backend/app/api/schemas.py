@@ -7,6 +7,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.challenges.loader import load_challenge
 from app.game.models import (
     ConnectionStatus, GamePhase, ObjectiveStatus, PlayerRole, RoomState,
 )
@@ -51,6 +52,22 @@ class OwnObjective(ApiModel):
     status: ObjectiveStatus
 
 
+class PublicTestOutcome(ApiModel):
+    test_id: str
+    name: str
+    passed: bool
+    required_for_civilian_win: bool
+    message: str | None
+
+
+class OfficialResultSummary(ApiModel):
+    run_id: str
+    source_revision_id: str
+    status: Literal["completed"] = "completed"
+    all_required_tests_passed: bool
+    tests: tuple[PublicTestOutcome, ...]
+
+
 class RoomSnapshot(ApiModel):
     room_code: str
     phase: GamePhase
@@ -66,6 +83,7 @@ class RoomSnapshot(ApiModel):
     challenge_id: str | None
     challenge_version: str | None
     current_source_revision_id: str | None
+    official_result: OfficialResultSummary | None = None
     players: tuple[PublicPlayer, ...]
 
 
@@ -88,6 +106,23 @@ def build_room_response(room: RoomState, player_id: str) -> RoomResponse:
     player = next(item for item in room.players if item.player_id == player_id)
     match = room.match
     current_round = match.current_round if match is not None else None
+    official_summary = None
+    if current_round is not None and current_round.official_test_result is not None:
+        official = current_round.official_test_result
+        loaded = load_challenge(current_round.challenge_id, current_round.challenge_version)
+        if loaded.content_digest != current_round.challenge_content_digest:
+            raise ValueError("Pinned challenge content changed while projecting its result.")
+        passed = set(official.passed_test_ids)
+        official_summary = OfficialResultSummary(
+            run_id=official.run_id,
+            source_revision_id=official.source_revision_id,
+            all_required_tests_passed=official.all_required_tests_passed,
+            tests=tuple(PublicTestOutcome(
+                test_id=test.id, name=test.name, passed=test.id in passed,
+                required_for_civilian_win=test.required_for_civilian_win,
+                message=None if test.id in passed else test.safe_failure_message,
+            ) for test in loaded.challenge.tests if test.visibility == "public"),
+        )
     own_objectives = (
         tuple(
             OwnObjective(objective_id=item.objective_id, status=item.status)
@@ -127,6 +162,7 @@ def build_room_response(room: RoomState, player_id: str) -> RoomResponse:
             challenge_id=current_round.challenge_id if current_round else None,
             challenge_version=current_round.challenge_version if current_round else None,
             current_source_revision_id=current_round.current_source_revision_id if current_round else None,
+            official_result=official_summary,
             players=public_players,
         )
     )

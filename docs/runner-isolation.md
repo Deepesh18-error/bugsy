@@ -33,3 +33,10 @@ The Counter challenge is still marked `draft` in the authored bank. The developm
 Redis Streams may deliver a job more than once after a crash. The runner publishes at most one result per run ID; FastAPI also rejects duplicate or stale official results. Jobs with malformed envelopes are acknowledged without execution. Redis outages leave valid jobs pending for later recovery.
 
 The official runner needs a compatible Linux kernel and container runtime. Compose syntax and Python contract checks can be validated on other hosts, but a Linux sandbox smoke run is required before this can be called production-ready.
+
+## Phase 9 verification
+
+- On a development machine, run the permanent backend runner checks with `PYTHONPATH=backend python -m unittest discover -s backend/tests/runner -v` and the independent runner checks with `PYTHONPATH=services/runner python -m unittest discover -s services/runner/tests -v`. On PowerShell, set `$env:PYTHONPATH` before each command.
+- On the target Linux Docker host, build the runner and run `docker compose -f infra/compose.yaml --profile runner run --rm --no-deps runner python -m unittest discover -s tests -v`. The tests exercise the real nsjail preflight, correct solution, infinite loop, oversized output, malformed Python, filesystem/network access, memory/process limits, and signing-key absence. Any skipped or failed jail test means the isolation exit gate has not passed.
+- Then run a complete local match with Redis, FastAPI, editor sync, runner, and two browser sessions. Verify an official failing result, a saved edit, a second official run, an edit while a job is pending, reconnect with the public result restored, and a winning result. The runner must not be considered deployable from contract tests alone.
+- The optional Pyodide check runs shared code in a same-origin browser Worker. Worker termination bounds a hung check and keeps the UI responsive; it is not a security boundary against hostile code. A player must opt in to running it. Production use with untrusted strangers needs a separate uncredentialed origin or equivalent isolation. Official outcomes use only the Linux runner.

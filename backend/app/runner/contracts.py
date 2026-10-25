@@ -24,7 +24,7 @@ Digest = Annotated[str, StringConstraints(pattern=r"^sha256:[0-9a-f]{64}$", max_
 
 
 class StrictModel(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
 
 
 class RunnerStatus(StrEnum):

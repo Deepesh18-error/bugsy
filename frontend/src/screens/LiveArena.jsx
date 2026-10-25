@@ -19,7 +19,8 @@ function formatTime(seconds) {
 }
 
 export default function LiveArena({ room, role, categoryName, roundNumber, totalRounds,
-  deadlineAt, revisionId, connectionStatus, officialEvent, sendCommand }) {
+  deadlineAt, revisionId, connectionStatus, officialEvent, officialSnapshot,
+  sendCommand, requestSnapshot }) {
   const [session, setSession] = useState(null);
   const [sessionError, setSessionError] = useState('');
   const [history, setHistory] = useState([]);
@@ -35,6 +36,8 @@ export default function LiveArena({ room, role, categoryName, roundNumber, total
   const [officialResult, setOfficialResult] = useState(null);
   const [officialStatus, setOfficialStatus] = useState('idle');
   const [officialError, setOfficialError] = useState('');
+  const displayedOfficialResult = officialResult?.source_revision_id === revisionId
+    ? officialResult : officialSnapshot ?? officialResult;
   const requestedRevisionRef = useRef(null);
   const ownPlayer = room.players.find((player) => player.id === room.currentPlayerId);
   const participant = useMemo(() => ({
@@ -77,13 +80,22 @@ export default function LiveArena({ room, role, categoryName, roundNumber, total
   }, [officialEvent, revisionId]);
 
   useEffect(() => {
+    if (officialSnapshot?.source_revision_id !== revisionId) return;
+    setOfficialStatus('idle');
+    setOfficialError('');
+  }, [officialSnapshot, revisionId]);
+
+  useEffect(() => {
     if (officialStatus !== 'waiting') return undefined;
+    // A result can commit even if its WebSocket event is lost. Refreshing the
+    // authorized snapshot also resolves an already deduplicated retry.
+    const refresh = window.setInterval(() => requestSnapshot?.(), 3_000);
     const timeout = window.setTimeout(() => {
       setOfficialStatus('idle');
       setOfficialError('No official result arrived yet. You can retry this saved revision.');
     }, 30_000);
-    return () => window.clearTimeout(timeout);
-  }, [officialStatus]);
+    return () => { window.clearInterval(refresh); window.clearTimeout(timeout); };
+  }, [officialStatus, requestSnapshot]);
 
   useEffect(() => {
     if ((officialStatus === 'waiting' || officialStatus === 'sending')
@@ -180,7 +192,7 @@ export default function LiveArena({ room, role, categoryName, roundNumber, total
             <div><p className={styles.eyebrow}>YOUR ROLE</p><strong>{role === 'impostor' ? 'Impostor' : role === 'civilian' ? 'Civilian' : 'Waiting for role…'}</strong></div>
           </section>
           <TestResults bundle={feedbackBundle} bundleError={bundleError}
-            provisional={provisional} official={officialResult}
+            provisional={provisional} official={displayedOfficialResult}
             officialStatus={officialStatus} officialError={officialError}
             revisionId={revisionId}
             canRun={editor.canEdit && connectionStatus === 'connected' && secondsLeft > 0}

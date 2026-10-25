@@ -24,6 +24,7 @@ RUN pip install --no-cache-dir --requirement requirements-lock.txt
 COPY contracts.py executor.py result_parser.py worker.py ./
 COPY challenges/ ./challenges/
 COPY sandbox/ ./sandbox/
+COPY tests/ ./tests/
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PYTHONNOUSERSITE=1
 USER 10001:10001
 CMD ["python", "-I", "-B", "worker.py"]

@@ -42,10 +42,12 @@ export function requireRoomSnapshot(snapshot) {
     'room_code', 'phase', 'capacity', 'expires_at', 'phase_deadline_at',
     'self_player_id', 'own_category_vote_id', 'own_role', 'own_objectives',
     'selected_category_id', 'round_number', 'challenge_id', 'challenge_version',
-    'current_source_revision_id', 'players',
+    'current_source_revision_id', 'official_result', 'players',
   ];
   const playerKeys = ['player_id', 'display_name', 'connection', 'is_ready', 'is_alive', 'is_host'];
   const objectiveKeys = ['objective_id', 'status'];
+  const officialKeys = ['run_id', 'source_revision_id', 'status', 'all_required_tests_passed', 'tests'];
+  const resultTestKeys = ['test_id', 'name', 'passed', 'required_for_civilian_win', 'message'];
   if (!isRecord(snapshot)
     || !hasOnlyKeys(snapshot, snapshotKeys)
     || typeof snapshot.room_code !== 'string' || !snapshot.room_code
@@ -63,6 +65,19 @@ export function requireRoomSnapshot(snapshot) {
     || (snapshot.challenge_version !== null && typeof snapshot.challenge_version !== 'string')
     || (snapshot.current_source_revision_id !== null
       && typeof snapshot.current_source_revision_id !== 'string')
+    || (snapshot.official_result != null && (!isRecord(snapshot.official_result)
+      || !hasOnlyKeys(snapshot.official_result, officialKeys)
+      || typeof snapshot.official_result.run_id !== 'string'
+      || typeof snapshot.official_result.source_revision_id !== 'string'
+      || snapshot.official_result.status !== 'completed'
+      || typeof snapshot.official_result.all_required_tests_passed !== 'boolean'
+      || !Array.isArray(snapshot.official_result.tests)
+      || snapshot.official_result.tests.some((test) => !isRecord(test)
+        || !hasOnlyKeys(test, resultTestKeys)
+        || typeof test.test_id !== 'string' || typeof test.name !== 'string'
+        || typeof test.passed !== 'boolean'
+        || typeof test.required_for_civilian_win !== 'boolean'
+        || (test.message !== null && typeof test.message !== 'string'))))
     || !Array.isArray(snapshot.own_objectives)
     || !snapshot.own_objectives.every((objective) => isRecord(objective)
       && hasOnlyKeys(objective, objectiveKeys)
