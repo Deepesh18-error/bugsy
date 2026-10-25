@@ -46,6 +46,22 @@ const eventPayloadChecks = {
   ]) && typeof payload.source_revision_id === 'string' && payload.source_revision_id.length > 0
     && typeof payload.restored_from_revision_id === 'string' && payload.restored_from_revision_id.length > 0
     && isPlayerId(payload.restored_by_player_id),
+  OfficialTestRunRequested: (payload) => hasExactKeys(payload, ['source_revision_id'])
+    && typeof payload.source_revision_id === 'string' && payload.source_revision_id.length > 0,
+  OfficialTestResult: (payload) => hasExactKeys(payload, [
+    'run_id', 'source_revision_id', 'status', 'all_required_tests_passed', 'tests',
+  ]) && typeof payload.run_id === 'string' && payload.run_id.length > 0
+    && typeof payload.source_revision_id === 'string' && payload.source_revision_id.length > 0
+    && payload.status === 'completed'
+    && typeof payload.all_required_tests_passed === 'boolean'
+    && Array.isArray(payload.tests) && payload.tests.length <= 32
+    && payload.tests.every((test) => hasExactKeys(test, [
+      'test_id', 'name', 'passed', 'required_for_civilian_win', 'message',
+    ]) && typeof test.test_id === 'string' && test.test_id.length > 0
+      && typeof test.name === 'string' && test.name.length > 0
+      && typeof test.passed === 'boolean'
+      && typeof test.required_for_civilian_win === 'boolean'
+      && (test.message === null || typeof test.message === 'string')),
   RoundEnded: (payload) => hasExactKeys(payload, ['round_number'])
     && Number.isInteger(payload.round_number) && payload.round_number >= 1 && payload.round_number <= 4,
   PlayerDeparted: (payload) => hasExactKeys(payload, ['player_id'])

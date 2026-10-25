@@ -10,6 +10,7 @@ export default function useRoomSocket(roomCode) {
   const [status, setStatus] = useState('idle');
   const [snapshot, setSnapshot] = useState(null);
   const [lastEvent, setLastEvent] = useState(null);
+  const [lastOfficialResult, setLastOfficialResult] = useState(null);
   const [error, setError] = useState('');
   const [hasSequenceGap, setHasSequenceGap] = useState(false);
 
@@ -29,6 +30,7 @@ export default function useRoomSocket(roomCode) {
     setStatus('connecting');
     setSnapshot(null);
     setLastEvent(null);
+    setLastOfficialResult(null);
     setError('');
     setHasSequenceGap(false);
 
@@ -89,7 +91,10 @@ export default function useRoomSocket(roomCode) {
           }
         } else if (message.type === 'event' || message.type === 'ack') {
           observedSequence = Math.max(observedSequence, message.sequence);
-          if (message.type === 'event') setLastEvent(message);
+          if (message.type === 'event') {
+            setLastEvent(message);
+            if (message.name === 'OfficialTestResult') setLastOfficialResult(message);
+          }
           if (message.sequence > snapshotSequence + 1) setHasSequenceGap(true);
           requestLatest(client, message.sequence);
         } else if (message.type === 'error' && !message.request_id) {
@@ -128,5 +133,5 @@ export default function useRoomSocket(roomCode) {
 
   const requestSnapshot = useCallback(() => socketRef.current?.requestSnapshot() ?? false, []);
 
-  return { status, snapshot, lastEvent, error, hasSequenceGap, sendCommand, requestSnapshot };
+  return { status, snapshot, lastEvent, lastOfficialResult, error, hasSequenceGap, sendCommand, requestSnapshot };
 }

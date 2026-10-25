@@ -1,7 +1,10 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import PlayerCard from '../components/PlayerCard.jsx';
 import StatusMessage from '../components/StatusMessage.jsx';
+import TestResults from '../components/TestResults.jsx';
 import { loadEditorHistory, loadEditorSession, restoreEditorRevision } from '../api/editor.js';
+import { loadPublicFeedbackBundle, requestOfficialTestRun } from '../api/codeFeedback.js';
+import useCodeFeedback from '../hooks/useCodeFeedback.js';
 import useCollaborativeEditor from '../hooks/useCollaborativeEditor.js';
 import styles from '../styles/ArenaScreen.module.css';
 
@@ -16,7 +19,7 @@ function formatTime(seconds) {
 }
 
 export default function LiveArena({ room, role, categoryName, roundNumber, totalRounds,
-  deadlineAt, revisionId, connectionStatus }) {
+  deadlineAt, revisionId, connectionStatus, officialEvent, sendCommand }) {
   const [session, setSession] = useState(null);
   const [sessionError, setSessionError] = useState('');
   const [history, setHistory] = useState([]);
@@ -26,12 +29,69 @@ export default function LiveArena({ room, role, categoryName, roundNumber, total
   const [secondsLeft, setSecondsLeft] = useState(() => timeLeft(deadlineAt));
   const [collaborators, setCollaborators] = useState([]);
   const [accessibleMode, setAccessibleMode] = useState(false);
+  const [source, setSource] = useState('');
+  const [feedbackBundle, setFeedbackBundle] = useState(null);
+  const [bundleError, setBundleError] = useState('');
+  const [officialResult, setOfficialResult] = useState(null);
+  const [officialStatus, setOfficialStatus] = useState('idle');
+  const [officialError, setOfficialError] = useState('');
+  const requestedRevisionRef = useRef(null);
   const ownPlayer = room.players.find((player) => player.id === room.currentPlayerId);
   const participant = useMemo(() => ({
     id: ownPlayer?.id, name: ownPlayer?.name,
     color: '#73d5b3',
   }), [ownPlayer?.id, ownPlayer?.name]);
   const editor = useCollaborativeEditor(session, participant, Boolean(session));
+  const { feedback: provisional, run: runProvisional } = useCodeFeedback(
+    `${room.code}:${roundNumber}`, source,
+  );
+
+  useEffect(() => {
+    if (!editor.sharedText) { setSource(''); return undefined; }
+    const sharedText = editor.sharedText;
+    const update = () => setSource(sharedText.toString());
+    update();
+    sharedText.observe(update);
+    return () => sharedText.unobserve(update);
+  }, [editor.sharedText]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setFeedbackBundle(null);
+    setBundleError('');
+    loadPublicFeedbackBundle(room.code, roundNumber, controller.signal)
+      .then((bundle) => setFeedbackBundle(bundle))
+      .catch((error) => {
+        if (error.name !== 'AbortError') setBundleError(error.message);
+      });
+    return () => controller.abort();
+  }, [room.code, roundNumber]);
+
+  useEffect(() => {
+    if (officialEvent?.name !== 'OfficialTestResult') return;
+    const payload = officialEvent.payload;
+    if (payload?.source_revision_id !== revisionId) return;
+    setOfficialResult(payload);
+    setOfficialStatus('idle');
+    setOfficialError('');
+  }, [officialEvent, revisionId]);
+
+  useEffect(() => {
+    if (officialStatus !== 'waiting') return undefined;
+    const timeout = window.setTimeout(() => {
+      setOfficialStatus('idle');
+      setOfficialError('No official result arrived yet. You can retry this saved revision.');
+    }, 30_000);
+    return () => window.clearTimeout(timeout);
+  }, [officialStatus]);
+
+  useEffect(() => {
+    if ((officialStatus === 'waiting' || officialStatus === 'sending')
+      && requestedRevisionRef.current !== revisionId) {
+      setOfficialStatus('idle');
+      setOfficialError('The code revision changed. Run official tests for the new saved revision.');
+    }
+  }, [revisionId, officialStatus]);
 
   useEffect(() => {
     let active = true;
@@ -86,6 +146,20 @@ export default function LiveArena({ room, role, categoryName, roundNumber, total
     }
   }
 
+  async function handleOfficialRun() {
+    if (!revisionId || !sendCommand || officialStatus === 'sending') return;
+    requestedRevisionRef.current = revisionId;
+    setOfficialError('');
+    setOfficialStatus('sending');
+    try {
+      await requestOfficialTestRun(sendCommand, revisionId);
+      setOfficialStatus((current) => current === 'sending' ? 'waiting' : current);
+    } catch (error) {
+      setOfficialStatus('idle');
+      setOfficialError(error.message || 'The official test request was rejected.');
+    }
+  }
+
   return (
     <main className={styles.page}>
       <header className={styles.topbar}>
@@ -105,7 +179,13 @@ export default function LiveArena({ room, role, categoryName, roundNumber, total
             <span className={`${styles.roleDot} ${role === 'impostor' ? styles.impostorDot : ''}`} aria-hidden="true" />
             <div><p className={styles.eyebrow}>YOUR ROLE</p><strong>{role === 'impostor' ? 'Impostor' : role === 'civilian' ? 'Civilian' : 'Waiting for role…'}</strong></div>
           </section>
-          <StatusMessage status="info">Python test runs and emergency meetings are unavailable in this round.</StatusMessage>
+          <TestResults bundle={feedbackBundle} bundleError={bundleError}
+            provisional={provisional} official={officialResult}
+            officialStatus={officialStatus} officialError={officialError}
+            revisionId={revisionId}
+            canRun={editor.canEdit && connectionStatus === 'connected' && secondsLeft > 0}
+            onRunProvisional={() => runProvisional(feedbackBundle?.tests)}
+            onRunOfficial={handleOfficialRun} />
           <div className={styles.liveHistory}>
             <h2>Revision history</h2>
             <p>Current revision: <code>{revisionId || 'Waiting for server…'}</code></p>

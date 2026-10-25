@@ -6,10 +6,12 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "test": "node --test tests/*.test.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
     "monaco-editor": "0.56.0",
+    "pyodide": "0.29.5",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "y-monaco": "0.1.6",
