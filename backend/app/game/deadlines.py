@@ -4,6 +4,10 @@ This module decides whether an absolute server-time deadline is still open,
 due, stale, or invalid for a requested phase. The phase-specific state changes
 remain in ``transitions.py``. A room coordinator must serialize all operations
 for one room and pass the server receipt time into the transition engine.
+
+The round-result pause has no implicit timeout: the host's continuation command
+starts a server-prepared next round, whose coding deadline must still be in the
+future. This avoids inventing a result-screen duration in the rules layer.
 """
 
 from __future__ import annotations

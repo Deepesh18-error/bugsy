@@ -29,6 +29,7 @@ from .commands import (
     SendChatMessage,
     SetReady,
     StartMatch,
+    StartNextRound,
 )
 from .events import (
     CategorySelected,
@@ -74,12 +75,16 @@ from .models import (
     MatchResult,
     MatchState,
     MatchWinner,
+    MAX_OFFICIAL_TEST_HISTORY,
+    MAX_TEST_PASS_EVIDENCE,
     OfficialTestResult,
     ObjectiveStatus,
     PlayerRole,
     PlayerState,
     RoomState,
     RoundState,
+    RoundEndReason,
+    TestPassEvidence,
     Vote,
     VoteKind,
 )
@@ -192,13 +197,14 @@ def apply_command(
     *,
     next_deadline: GameDeadline | None = None,
     meeting_cooldown_until: datetime | None = None,
+    next_round: RoundState | None = None,
 ) -> TransitionOutcome:
     """Validate and apply one player command without mutating ``state``.
 
-    ``next_deadline`` is supplied by the trusted room coordinator for actions
-    that begin a timed phase. Durations are intentionally not invented here.
-    The acting player ID must already have been bound to the authenticated
-    connection by the caller.
+    ``next_deadline`` and ``next_round`` are supplied by trusted coordination
+    code for actions that begin timed phases. Durations and challenge selection
+    are intentionally not invented here. The acting player ID must already
+    have been bound to the authenticated connection by the caller.
     """
 
     _validate_now(now)
@@ -211,6 +217,8 @@ def apply_command(
         return _set_ready(state, command, now)
     if isinstance(command, StartMatch):
         return _start_match(state, command, now, next_deadline)
+    if isinstance(command, StartNextRound):
+        return _start_next_round(state, command, now, next_round)
     if isinstance(command, CastCategoryVote):
         return _cast_category_vote(state, command, now)
     if isinstance(command, CallEmergencyMeeting):
@@ -446,6 +454,8 @@ def start_coding_round(
     state: RoomState,
     round_state: RoundState,
     now: datetime,
+    *,
+    request_id: str | None = None,
 ) -> TransitionOutcome:
     """Enter a selected challenge round after role reveal or round results."""
 
@@ -471,9 +481,13 @@ def start_coding_round(
     if sum(player.role is PlayerRole.IMPOSTOR for player in state.players) != 1:
         return _reject(state, RejectionCode.INVALID_SELECTION, "The match must have exactly one impostor.")
 
+    completed_rounds = state.match.round_history
+    if state.phase is GamePhase.ROUND_RESULT and state.match.current_round is not None:
+        completed_rounds = (*completed_rounds, state.match.current_round)
     updated_match = replace(
         state.match,
         round_number=round_state.number,
+        round_history=completed_rounds,
         current_round=round_state,
         player_votes=(),
     )
@@ -487,7 +501,7 @@ def start_coding_round(
         updated,
         CodingRoundStarted(
             occurred_at=now,
-            request_id=None,
+            request_id=request_id,
             round_number=round_state.number,
             category_id=round_state.category_id,
             challenge_id=round_state.challenge_id,
@@ -496,6 +510,25 @@ def start_coding_round(
             deadline_at=round_state.deadline.due_at,
         ),
     )
+
+
+def _start_next_round(
+    state: RoomState,
+    command: StartNextRound,
+    now: datetime,
+    next_round: RoundState | None,
+) -> TransitionOutcome:
+    """Let the connected host continue from round results using trusted setup data."""
+
+    if state.phase is not GamePhase.ROUND_RESULT or state.match is None:
+        return _reject(state, RejectionCode.WRONG_PHASE, "The next round can only start from round results.", command.request_id)
+    if command.player_id != state.host_player_id:
+        return _reject(state, RejectionCode.NOT_HOST, "Only the host can start the next round.", command.request_id)
+    if _find_player(state, command.player_id, require_alive=False) is None:
+        return _reject(state, RejectionCode.PLAYER_NOT_CONNECTED, "The host must be connected to continue.", command.request_id)
+    if next_round is None:
+        return _reject(state, RejectionCode.INVALID_SELECTION, "A server-selected challenge round is required.", command.request_id)
+    return start_coding_round(state, next_round, now, request_id=command.request_id)
 
 
 def _call_meeting(
@@ -925,10 +958,25 @@ def record_official_test_result(
     current_round = state.match.current_round
     if result.source_revision_id != current_round.current_source_revision_id:
         return _reject(state, RejectionCode.STALE_REVISION, "The test result is for an older code revision.")
-    if current_round.official_test_result is not None and current_round.official_test_result.run_id == result.run_id:
-        if current_round.official_test_result == result:
+    previous_run = next(
+        (item for item in current_round.official_test_history if item.run_id == result.run_id),
+        None,
+    )
+    if (
+        previous_run is None
+        and current_round.official_test_result is not None
+        and current_round.official_test_result.run_id == result.run_id
+    ):
+        previous_run = current_round.official_test_result
+    if previous_run is not None:
+        if previous_run == result:
             return _accepted(state)
         return _reject(state, RejectionCode.DUPLICATE_REQUEST, "This runner ID has already been recorded with different results.")
+    if (
+        current_round.official_test_result is not None
+        and result.completed_at < current_round.official_test_result.completed_at
+    ):
+        return _reject(state, RejectionCode.STALE_RESULT, "An older run cannot replace a newer result for the current revision.")
     if result.completed_at > now:
         return _reject(state, RejectionCode.RESULT_FROM_FUTURE, "The test result completion time is in the future.")
     if result.completed_at < current_round.started_at:
@@ -939,7 +987,28 @@ def record_official_test_result(
     ):
         return _reject(state, RejectionCode.DEADLINE_PASSED, "The round deadline has passed.")
 
-    updated_round = replace(current_round, official_test_result=result)
+    pass_evidence = list(current_round.test_pass_evidence)
+    known_test_ids = {item.test_id for item in pass_evidence}
+    if len(known_test_ids.union(result.passed_test_ids)) > MAX_TEST_PASS_EVIDENCE:
+        return _reject(state, RejectionCode.INVALID_SELECTION, "This round exceeds the test evidence limit.")
+    for test_id in result.passed_test_ids:
+        if test_id not in known_test_ids:
+            pass_evidence.append(TestPassEvidence(
+                test_id=test_id,
+                source_revision_id=result.source_revision_id,
+                run_id=result.run_id,
+                completed_at=result.completed_at,
+            ))
+            known_test_ids.add(test_id)
+    updated_round = replace(
+        current_round,
+        official_test_result=result,
+        official_test_history=(
+            *current_round.official_test_history,
+            result,
+        )[-MAX_OFFICIAL_TEST_HISTORY:],
+        test_pass_evidence=tuple(pass_evidence),
+    )
     updated_match = replace(state.match, current_round=updated_round)
     accepted_event = OfficialTestResultAccepted(
         occurred_at=now,
@@ -996,6 +1065,11 @@ def end_coding_round(
         return _reject(state, RejectionCode.DEADLINE_NOT_REACHED, "The coding-round deadline has not arrived.")
 
     current_round = state.match.current_round
+    ended_round = replace(
+        current_round,
+        ended_at=now,
+        end_reason=RoundEndReason.DEADLINE_EXPIRED,
+    )
     if current_round.number == MAX_ROUNDS:
         impostor = next(
             (player for player in state.players if player.role is PlayerRole.IMPOSTOR),
@@ -1010,11 +1084,16 @@ def end_coding_round(
                 round_number=current_round.number,
                 ended_at=now,
             )
-            updated_match = replace(state.match, result=result)
+            updated_match = replace(state.match, current_round=ended_round, result=result)
             updated = replace(state, phase=GamePhase.GAME_OVER, phase_deadline=None, match=updated_match)
             return _accepted(
                 updated,
-                RoundEnded(occurred_at=now, request_id=None, round_number=current_round.number),
+                RoundEnded(
+                    occurred_at=now,
+                    request_id=None,
+                    round_number=current_round.number,
+                    reason=RoundEndReason.DEADLINE_EXPIRED,
+                ),
                 MatchEnded(
                     occurred_at=now,
                     request_id=None,
@@ -1025,10 +1104,16 @@ def end_coding_round(
             )
         return _reject(state, RejectionCode.INVALID_SELECTION, "An eliminated impostor should already have ended the match.")
 
-    updated = replace(state, phase=GamePhase.ROUND_RESULT, phase_deadline=None)
+    updated_match = replace(state.match, current_round=ended_round)
+    updated = replace(state, phase=GamePhase.ROUND_RESULT, phase_deadline=None, match=updated_match)
     return _accepted(
         updated,
-        RoundEnded(occurred_at=now, request_id=None, round_number=current_round.number),
+        RoundEnded(
+            occurred_at=now,
+            request_id=None,
+            round_number=current_round.number,
+            reason=RoundEndReason.DEADLINE_EXPIRED,
+        ),
     )
 
 

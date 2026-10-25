@@ -53,6 +53,11 @@ class StartMatch(GameCommand):
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
+class StartNextRound(GameCommand):
+    """Ask the host to start the server-selected next challenge after results."""
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
 class CastCategoryVote(GameCommand):
     """Choose one supported category during the category-vote phase."""
 
@@ -128,6 +133,7 @@ class RequestRematch(GameCommand):
 GameCommandType = (
     SetReady
     | StartMatch
+    | StartNextRound
     | CastCategoryVote
     | CallEmergencyMeeting
     | CastPlayerVote

@@ -86,6 +86,17 @@ class MatchEndReason(str, Enum):
     FINAL_DEADLINE_SURVIVED = "final_deadline_survived"
 
 
+class RoundEndReason(str, Enum):
+    """Why the coding portion of a round stopped without ending the match."""
+
+    DEADLINE_EXPIRED = "deadline_expired"
+
+
+MAX_OFFICIAL_TEST_HISTORY = 32
+MAX_TEST_PASS_EVIDENCE = 256
+MAX_ROUND_HISTORY = 3
+
+
 def _require_non_blank(value: str, field_name: str) -> None:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{field_name} must be a non-empty string")
@@ -215,6 +226,24 @@ class OfficialTestResult:
             raise ValueError("failed_test_ids cannot contain duplicates")
         if set(self.passed_test_ids).intersection(self.failed_test_ids):
             raise ValueError("a test cannot be both passed and failed in one run")
+        if len(self.passed_test_ids) + len(self.failed_test_ids) > MAX_TEST_PASS_EVIDENCE:
+            raise ValueError("one official result contains too many test IDs")
+
+
+@dataclass(frozen=True, slots=True)
+class TestPassEvidence:
+    """A durable proof that one named test passed on a particular revision."""
+
+    test_id: str
+    source_revision_id: str
+    run_id: str
+    completed_at: datetime
+
+    def __post_init__(self) -> None:
+        _require_non_blank(self.test_id, "test_id")
+        _require_non_blank(self.source_revision_id, "source_revision_id")
+        _require_non_blank(self.run_id, "run_id")
+        _require_utc_datetime(self.completed_at, "completed_at")
 
 
 @dataclass(frozen=True, slots=True)
@@ -230,7 +259,11 @@ class RoundState:
     deadline: GameDeadline
     current_source_revision_id: str
     official_test_result: OfficialTestResult | None = None
+    official_test_history: tuple[OfficialTestResult, ...] = ()
+    test_pass_evidence: tuple[TestPassEvidence, ...] = ()
     sabotage_objectives: tuple[SabotageObjectiveProgress, ...] = ()
+    ended_at: datetime | None = None
+    end_reason: RoundEndReason | None = None
 
     def __post_init__(self) -> None:
         if not 1 <= self.number <= 4:
@@ -247,6 +280,31 @@ class RoundState:
             raise ValueError("round deadline must have kind CODING_ROUND")
         if self.deadline.due_at <= self.started_at:
             raise ValueError("round deadline must be after the round start")
+        if len(self.official_test_history) > MAX_OFFICIAL_TEST_HISTORY:
+            raise ValueError("official test history exceeds its bound")
+        if len(self.test_pass_evidence) > MAX_TEST_PASS_EVIDENCE:
+            raise ValueError("test pass evidence exceeds its bound")
+        if any(not isinstance(item, OfficialTestResult) for item in self.official_test_history):
+            raise ValueError("official_test_history contains an invalid result")
+        if any(not isinstance(item, TestPassEvidence) for item in self.test_pass_evidence):
+            raise ValueError("test_pass_evidence contains invalid evidence")
+        if self.official_test_history and len({item.run_id for item in self.official_test_history}) != len(self.official_test_history):
+            raise ValueError("official test history cannot repeat a runner ID")
+        if self.official_test_result is not None and (
+            self.official_test_result.source_revision_id != self.current_source_revision_id
+        ):
+            raise ValueError("current official result must match the current source revision")
+        if self.ended_at is None:
+            if self.end_reason is not None:
+                raise ValueError("an end reason requires ended_at")
+        else:
+            _require_utc_datetime(self.ended_at, "ended_at")
+            if self.end_reason is None:
+                raise ValueError("ended_at requires a round end reason")
+            if self.ended_at < self.started_at:
+                raise ValueError("round cannot end before it starts")
+        if len({item.test_id for item in self.test_pass_evidence}) != len(self.test_pass_evidence):
+            raise ValueError("test pass evidence must contain one entry per test ID")
         objective_ids = [item.objective_id for item in self.sabotage_objectives]
         if len(objective_ids) != len(set(objective_ids)):
             raise ValueError("sabotage objective IDs must be unique within a round")
@@ -296,6 +354,7 @@ class MatchState:
     selected_category_id: str | None = None
     category_votes: tuple[Vote, ...] = ()
     player_votes: tuple[Vote, ...] = ()
+    round_history: tuple[RoundState, ...] = ()
     current_round: RoundState | None = None
     result: MatchResult | None = None
     meeting_started_at: datetime | None = None
@@ -314,6 +373,17 @@ class MatchState:
             raise ValueError("current_round.number must match round_number")
         if self.current_round is None and self.round_number > 0:
             raise ValueError("a match past category selection must have a current round")
+        if len(self.round_history) > MAX_ROUND_HISTORY:
+            raise ValueError("round history exceeds the match limit")
+        if any(not isinstance(item, RoundState) for item in self.round_history):
+            raise ValueError("round history contains an invalid round")
+        history_numbers = tuple(item.number for item in self.round_history)
+        if history_numbers != tuple(sorted(set(history_numbers))):
+            raise ValueError("round history must have unique increasing round numbers")
+        if self.current_round is not None and any(
+            item.number >= self.current_round.number for item in self.round_history
+        ):
+            raise ValueError("round history must precede the current round")
         if self.result is not None and self.result.round_number != self.round_number:
             raise ValueError("match result round must match the current round")
         if any(vote.kind is not VoteKind.CATEGORY for vote in self.category_votes):

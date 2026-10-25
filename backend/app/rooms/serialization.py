@@ -21,9 +21,11 @@ from app.game.models import (
     OfficialTestResult,
     PlayerRole,
     PlayerState,
+    RoundEndReason,
     RoomState,
     RoundState,
     SabotageObjectiveProgress,
+    TestPassEvidence,
     Vote,
     VoteKind,
 )
@@ -33,8 +35,9 @@ from app.rooms.repository import (
 )
 
 
-STORAGE_VERSION = 2
+STORAGE_VERSION = 3
 LEGACY_STORAGE_VERSION = 1
+PREVIOUS_STORAGE_VERSION = 2
 MAX_ROOM_BYTES = 1_048_576
 EDITOR_STORAGE_VERSION = 1
 MAX_EDITOR_RECORD_BYTES = 1_572_864
@@ -134,6 +137,15 @@ def _official_result(value: dict[str, Any] | None) -> OfficialTestResult | None:
     )
 
 
+def _test_pass_evidence(value: dict[str, Any]) -> TestPassEvidence:
+    return TestPassEvidence(
+        test_id=value["test_id"],
+        source_revision_id=value["source_revision_id"],
+        run_id=value["run_id"],
+        completed_at=_date(value["completed_at"]),
+    )
+
+
 def _round(value: dict[str, Any] | None) -> RoundState | None:
     if value is None:
         return None
@@ -150,7 +162,17 @@ def _round(value: dict[str, Any] | None) -> RoundState | None:
         deadline=deadline,
         current_source_revision_id=value["current_source_revision_id"],
         official_test_result=_official_result(value["official_test_result"]),
+        official_test_history=tuple(
+            _official_result(item) for item in value.get("official_test_history", [])
+        ),
+        test_pass_evidence=tuple(
+            _test_pass_evidence(item) for item in value.get("test_pass_evidence", [])
+        ),
         sabotage_objectives=tuple(_objective(item) for item in value["sabotage_objectives"]),
+        ended_at=_date(value["ended_at"]) if value.get("ended_at") else None,
+        end_reason=(
+            RoundEndReason(value["end_reason"]) if value.get("end_reason") else None
+        ),
     )
 
 
@@ -174,6 +196,7 @@ def _match(value: dict[str, Any] | None) -> MatchState | None:
         selected_category_id=value["selected_category_id"],
         category_votes=tuple(_vote(item) for item in value["category_votes"]),
         player_votes=tuple(_vote(item) for item in value["player_votes"]),
+        round_history=tuple(_round(item) for item in value.get("round_history", [])),
         current_round=_round(value["current_round"]),
         result=_result(value["result"]),
         meeting_started_at=(
@@ -194,7 +217,7 @@ def deserialize_room(raw: bytes) -> RoomState:
         if len(raw) > MAX_ROOM_BYTES:
             raise ValueError("Stored room exceeds the size limit.")
         payload = json.loads(raw)
-        if type(payload["storage_version"]) is not int or payload["storage_version"] not in (LEGACY_STORAGE_VERSION, STORAGE_VERSION):
+        if type(payload["storage_version"]) is not int or payload["storage_version"] not in (LEGACY_STORAGE_VERSION, PREVIOUS_STORAGE_VERSION, STORAGE_VERSION):
             raise ValueError("Unsupported room storage version.")
         value = payload["room"]
         return RoomState(
@@ -221,12 +244,12 @@ def deserialize_metadata(raw: bytes) -> tuple[int, tuple[CommandReceipt, ...]]:
             raise ValueError("Stored room exceeds the size limit.")
         value = json.loads(raw)
         version = value["storage_version"]
-        if type(version) is not int or version not in (LEGACY_STORAGE_VERSION, STORAGE_VERSION):
+        if type(version) is not int or version not in (LEGACY_STORAGE_VERSION, PREVIOUS_STORAGE_VERSION, STORAGE_VERSION):
             raise ValueError("Unsupported room storage version.")
-        sequence = value["sequence"] if version == STORAGE_VERSION else value.get("sequence", 0)
+        sequence = value["sequence"] if version >= PREVIOUS_STORAGE_VERSION else value.get("sequence", 0)
         if type(sequence) is not int or sequence < 0:
             raise ValueError("Invalid room sequence.")
-        receipt_values = value["receipts"] if version == STORAGE_VERSION else value.get("receipts", [])
+        receipt_values = value["receipts"] if version >= PREVIOUS_STORAGE_VERSION else value.get("receipts", [])
         if not isinstance(receipt_values, list) or len(receipt_values) > MAX_LEGACY_EMBEDDED_RECEIPTS:
             raise ValueError("Invalid stored receipts.")
         receipts = tuple(

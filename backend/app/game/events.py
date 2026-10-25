@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from .models import MatchEndReason, MatchWinner, PlayerRole
+from .models import MatchEndReason, MatchWinner, PlayerRole, RoundEndReason
 
 
 class GameEvent:
@@ -177,6 +177,7 @@ class RoundEnded(GameEvent):
     occurred_at: datetime
     request_id: str | None
     round_number: int
+    reason: RoundEndReason = RoundEndReason.DEADLINE_EXPIRED
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)

@@ -39,6 +39,7 @@ class RejectionCode(str, Enum):
     RECONNECT_GRACE_EXPIRED = "reconnect_grace_expired"
     RECONNECT_GRACE_OPEN = "reconnect_grace_open"
     RESULT_FROM_FUTURE = "result_from_future"
+    STALE_RESULT = "stale_result"
     MATCH_NOT_FINISHED = "match_not_finished"
     DUPLICATE_REQUEST = "duplicate_request"
     ACTION_NOT_SUPPORTED = "action_not_supported"
