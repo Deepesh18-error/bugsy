@@ -14,9 +14,11 @@ from app.game.transitions import (
     record_official_test_result,
     record_verified_sabotage_objective,
 )
+from app.observability import OperationalMetrics
 from app.realtime.connection_manager import RoomConnectionManager
 from app.realtime.snapshots import project_event
-from app.rooms.repository import RoomRepository
+from app.rooms.repository import RoomRepository, editor_document_id
+from app.runner.sabotage_policy import attributable_regression
 from app.runner.contracts import (
     RunnerJob,
     RunnerResult,
@@ -40,6 +42,7 @@ class RunnerResultProcessor:
         *,
         signing_key: str,
         room_locks: dict[str, asyncio.Lock] | None = None,
+        metrics: OperationalMetrics | None = None,
     ) -> None:
         if len(signing_key.encode("utf-8")) < 32:
             raise ValueError("CODEMAFIA_RUNNER_RESULT_HMAC_KEY must contain at least 32 bytes.")
@@ -48,6 +51,7 @@ class RunnerResultProcessor:
         self._connections = connections
         self._signing_key = signing_key
         self._locks = room_locks if room_locks is not None else {}
+        self._metrics = metrics
 
     async def process(self, result: RunnerResult) -> bool:
         """Return True for a terminal message (including stale/invalid results)."""
@@ -245,42 +249,21 @@ class RunnerResultProcessor:
                         events=(*queued.events, *outcome.events),
                     )
 
-                # A failed test is not evidence of who caused it. It can only
-                # complete an authored regression objective when that same
-                # test passed on an earlier code revision in this round.
-                # Keep the objective's private description and progress in
-                # domain state; its event projection is impostor-only.
-                current_after_result = (
-                    outcome.state.match.current_round
-                    if outcome.state.match is not None
-                    else None
-                )
-                if current_after_result is not None:
-                    failed_test_ids = set(official.failed_test_ids)
-                    for objective in loaded.challenge.sabotage_objectives:
-                        verification = objective.verification
-                        if verification.kind != "test_regression":
-                            continue
-                        test_id = verification.test_id
-                        passed_before = any(
-                            evidence.test_id == test_id
-                            and evidence.source_revision_id != result.source_revision_id
-                            and evidence.completed_at < result.completed_at
-                            for evidence in current_after_result.test_pass_evidence
+                # The saved author chain and trusted behavioral checks must
+                # both agree; a civilian regression is never sabotage credit.
+                document = None
+                if loaded.challenge.sabotage_objectives:
+                    document = await self._rooms.load_editor_document(editor_document_id(state))
+                for objective in loaded.challenge.sabotage_objectives:
+                    if not attributable_regression(state, loaded.challenge, objective, document, result):
+                        continue
+                    verified = record_verified_sabotage_objective(
+                        outcome.state, objective.id, result.source_revision_id, now,
+                    )
+                    if isinstance(verified, TransitionAccepted):
+                        outcome = TransitionAccepted(
+                            state=verified.state, events=(*outcome.events, *verified.events),
                         )
-                        if not passed_before or test_id not in failed_test_ids:
-                            continue
-                        verified = record_verified_sabotage_objective(
-                            outcome.state,
-                            objective.id,
-                            result.source_revision_id,
-                            now,
-                        )
-                        if isinstance(verified, TransitionAccepted):
-                            outcome = TransitionAccepted(
-                                state=verified.state,
-                                events=(*outcome.events, *verified.events),
-                            )
                 payload = player_safe_result_payload(loaded.challenge, result)
                 if await self._commit_transition(stored, job.room_code, outcome, payload):
                     return True
@@ -300,6 +283,8 @@ class RunnerResultProcessor:
             )
         for recipient, event in projected:
             if recipient is None:
+                if self._metrics is not None:
+                    self._metrics.observe_public_event(event.name, event.payload)
                 await self._connections.broadcast(room_code, event)
             else:
                 await self._connections.send_private(room_code, recipient, event)

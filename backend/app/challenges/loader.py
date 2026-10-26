@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from functools import lru_cache
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -60,7 +61,7 @@ def _read_challenge_file(path: Path) -> Challenge:
 
     try:
         raw_content = path.read_text(encoding="utf-8")
-    except OSError as exc:
+    except (OSError, UnicodeDecodeError) as exc:
         raise ChallengeLoadError(f"Cannot read challenge file '{path.name}'.") from exc
 
     try:
@@ -108,31 +109,34 @@ def load_challenge(challenge_id: str, version: str) -> LoadedChallenge:
     if not content_files:
         raise ChallengeLoadError("The challenge content directory contains no JSON files.")
 
-    matches: list[Challenge] = []
-    seen_versions: set[tuple[str, str]] = set()
+    try:
+        signature = tuple((str(path), path.stat().st_mtime_ns, path.stat().st_size)
+                          for path in content_files)
+        bank = _load_bank(signature)
+    except OSError as exc:
+        raise ChallengeLoadError("The challenge bank could not be read.") from exc
+    match = bank.get((normalized_id, normalized_version))
+    if match is None:
+        raise ChallengeLoadError(f"Challenge '{normalized_id}' version '{normalized_version}' was not found.")
+    return match
 
-    for path in content_files:
+
+@lru_cache(maxsize=4)
+def _load_bank(signature: tuple[tuple[str, int, int], ...]) -> dict[tuple[str, str], LoadedChallenge]:
+    """Validate once per on-disk bank version, not once per socket snapshot.
+
+    Stat-based invalidation keeps development edits visible; digest pins still
+    protect active rounds. An invalid file invalidates the entire bank.
+    """
+    bank = {}
+    for filename, modified, size in signature:
+        path = Path(filename)
         challenge = _read_challenge_file(path)
+        stat = path.stat()
+        if (stat.st_mtime_ns, stat.st_size) != (modified, size):
+            raise ChallengeLoadError("Challenge content changed while loading; retry.")
         identity = (challenge.id, challenge.version)
-
-        if identity in seen_versions:
-            raise ChallengeLoadError(
-                f"Duplicate challenge version '{challenge.id}' {challenge.version} "
-                "exists in the content bank."
-            )
-        seen_versions.add(identity)
-
-        if identity == (normalized_id, normalized_version):
-            matches.append(challenge)
-
-    if not matches:
-        raise ChallengeLoadError(
-            f"Challenge '{normalized_id}' version '{normalized_version}' was not found."
-        )
-
-    # Duplicate identities are rejected above, so exactly one match remains.
-    challenge = matches[0]
-    return LoadedChallenge(
-        challenge=challenge,
-        content_digest=_canonical_digest(challenge),
-    )
+        if identity in bank:
+            raise ChallengeLoadError(f"Duplicate challenge version '{challenge.id}' {challenge.version} exists in the content bank.")
+        bank[identity] = LoadedChallenge(challenge=challenge, content_digest=_canonical_digest(challenge))
+    return bank

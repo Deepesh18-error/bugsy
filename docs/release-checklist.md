@@ -7,11 +7,12 @@ journey. CI publication remains deferred by project choice.
 ## Local quality gates
 
 - [x] All backend game, realtime, API, editor, and runner tests pass.
-      2026-10-25: 53 + 51 + 12 + 19 + 15 tests passed locally.
+      2026-10-25: original 53 + 51 + 12 + 19 + 15 local tests passed;
+      after the Phase 14 checks, API 19, realtime 52 and runner 15 passed.
 - [x] Editor-sync Node tests pass, including authorization and stale-round
       socket checks. 2026-10-25: 3 tests passed on loopback.
 - [x] Frontend unit/component checks and production build pass.
-      2026-10-25: 1 Node test, 4 component tests, and Vite build passed.
+      2026-10-25: 1 Node test, 5 component tests, and Vite build passed.
 - [ ] Browser accessibility check passes at desktop and narrow width on the
       **live** screens. Three preview checks passed on 2026-10-25; the live
       screens still need the running multiplayer services.
@@ -38,6 +39,16 @@ journey. CI publication remains deferred by project choice.
 
 ## Isolation and deployment gates
 
+- [ ] Staging and production use exact HTTPS origins, a WSS editor endpoint,
+      secure cookies, separate random service keys, and an explicitly set Redis
+      URL. Startup validation rejects local development defaults.
+- [ ] The static host, Linux host, and same-hostname editor/API reverse proxy
+      are configured as in `docs/deployment.md` and tested from two networks.
+- [ ] Incident mode blocks room creation and match start; rollback and Redis
+      restore have been rehearsed on staging.
+- [ ] A private dashboard scrapes `/ops/metrics` and alerts on API/Redis health,
+      runner timeout/error and reconnect trends. Fixed-label API counters are
+      implemented, but dashboard and editor/runner readiness are pending.
 - [ ] The runner image builds on the target Linux host and its nsjail preflight
       passes without weakening namespace or filesystem restrictions.
 - [ ] All sandbox integration tests pass **without skips**: timeout, output,
@@ -48,11 +59,15 @@ journey. CI publication remains deferred by project choice.
 - [ ] Production Origin, secure cookie, HTTPS, Redis persistence, room TTL,
       and worker settings are reviewed for the deployment environment.
 - [ ] The authored challenge is reviewed/approved before production matching;
-      the current OOP Counter challenge is still marked `draft`.
+      the selectable Counter, Stack and Wallet versions are still marked `draft`. Controlled
+      staging playtests may explicitly allow draft content.
 
 ## Current blockers
 
 On the 2026-10-25 Windows workspace, Docker was not running, so Redis, the
 editor/runner profiles, Linux jail checks, and live browser journeys could
 not be exercised together. Complete those gates before claiming Phase 13's
-full product exit criterion or shipping the game.
+full product exit criterion or shipping the game. The staging and production
+environments and metrics dashboard are not deployed. The selectable authored
+challenges are still drafts, so production match start is blocked; staging
+requires an explicit draft-playtest setting.

@@ -2,13 +2,17 @@
 
 import asyncio
 from contextlib import asynccontextmanager
+import hmac
 import os
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import PlainTextResponse
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
 
+from app.config import parse_bool, validate_production_settings
+from app.observability import OperationalMetrics
 from app.api.rooms import router as room_router
 from app.api.editor import router as editor_router
 from app.api.feedback import router as feedback_router
@@ -39,16 +43,42 @@ def _allowed_origins() -> tuple[str, ...]:
 
 allowed_origins = _allowed_origins()
 environment = os.getenv("CODEMAFIA_ENV", "development").lower()
-secure_guest_cookie = os.getenv(
-    "CODEMAFIA_SECURE_COOKIE", "true" if environment == "production" else "false"
-).lower() == "true"
+secure_guest_cookie = parse_bool(
+    os.getenv("CODEMAFIA_SECURE_COOKIE", "true" if environment != "development" else "false"),
+    name="CODEMAFIA_SECURE_COOKIE",
+)
+accept_new_matches = parse_bool(
+    os.getenv("CODEMAFIA_ACCEPT_NEW_MATCHES", "true"),
+    name="CODEMAFIA_ACCEPT_NEW_MATCHES",
+)
+allow_draft_content = parse_bool(
+    os.getenv("CODEMAFIA_ALLOW_DRAFT_CONTENT", "true" if environment == "development" else "false"),
+    name="CODEMAFIA_ALLOW_DRAFT_CONTENT",
+)
 guest_cookie_samesite = os.getenv("CODEMAFIA_COOKIE_SAMESITE", "lax").lower()
 if guest_cookie_samesite not in {"lax", "strict", "none"}:
     raise ValueError("Guest-cookie SameSite must be lax, strict, or none.")
 if guest_cookie_samesite == "none" and not secure_guest_cookie:
     raise ValueError("Cross-site guest cookies require Secure mode and HTTPS.")
-if environment == "production" and not secure_guest_cookie:
-    raise ValueError("Production guest cookies must use HTTPS-only Secure mode.")
+editor_websocket_url = os.getenv(
+    "CODEMAFIA_EDITOR_WS_URL", "ws://127.0.0.1:1234/api/rooms/editor/ws",
+)
+editor_service_key = os.getenv("CODEMAFIA_EDITOR_SERVICE_KEY", "")
+signing_key = os.getenv("CODEMAFIA_RUNNER_RESULT_HMAC_KEY", "")
+metrics_token = os.getenv("CODEMAFIA_METRICS_TOKEN", "")
+if signing_key and len(signing_key.encode("utf-8")) < 32:
+    raise ValueError("CODEMAFIA_RUNNER_RESULT_HMAC_KEY must contain at least 32 bytes.")
+validate_production_settings(
+    environment=environment,
+    allowed_origins=allowed_origins,
+    secure_cookie=secure_guest_cookie,
+    editor_websocket_url=editor_websocket_url,
+    editor_service_key=editor_service_key,
+    runner_result_key=signing_key,
+    redis_url=os.getenv("REDIS_URL"),
+    metrics_token=metrics_token,
+    allow_draft_content=allow_draft_content,
+)
 
 
 @asynccontextmanager
@@ -63,10 +93,11 @@ async def lifespan(app: FastAPI):
     app.state.allowed_origins = allowed_origins
     app.state.secure_guest_cookie = secure_guest_cookie
     app.state.guest_cookie_samesite = guest_cookie_samesite
-    app.state.editor_service_key = os.getenv("CODEMAFIA_EDITOR_SERVICE_KEY", "")
-    app.state.editor_websocket_url = os.getenv(
-        "CODEMAFIA_EDITOR_WS_URL", "ws://127.0.0.1:1234/api/rooms/editor/ws",
-    )
+    app.state.accept_new_matches = accept_new_matches
+    app.state.allow_draft_content = allow_draft_content
+    app.state.operational_metrics = OperationalMetrics()
+    app.state.editor_service_key = editor_service_key
+    app.state.editor_websocket_url = editor_websocket_url
     repository = RedisRoomRepository(client)
     runner_repository = RedisRunnerRepository(client)
     app.state.room_repository = repository
@@ -80,9 +111,6 @@ async def lifespan(app: FastAPI):
         ),
     )
     app.state.room_connection_manager = RoomConnectionManager(app.state.room_service.authenticate_player)
-    signing_key = os.getenv("CODEMAFIA_RUNNER_RESULT_HMAC_KEY", "")
-    if signing_key and len(signing_key.encode("utf-8")) < 32:
-        raise ValueError("CODEMAFIA_RUNNER_RESULT_HMAC_KEY must contain at least 32 bytes.")
     app.state.runner_repository = runner_repository
     app.state.runner_service = RunnerService(
         repository, runner_repository, enabled=bool(signing_key),
@@ -96,9 +124,11 @@ async def lifespan(app: FastAPI):
             meeting_discussion_seconds=int(os.getenv("CODEMAFIA_MEETING_DISCUSSION_SECONDS", "30")),
             player_vote_seconds=int(os.getenv("CODEMAFIA_PLAYER_VOTE_SECONDS", "30")),
             meeting_cooldown_seconds=int(os.getenv("CODEMAFIA_MEETING_COOLDOWN_SECONDS", "60")),
-            allow_draft_content=environment != "production",
+            allow_draft_content=allow_draft_content,
         ),
         runner_service=app.state.runner_service,
+        accept_new_matches=accept_new_matches,
+        metrics=app.state.operational_metrics,
         automatic_test_debounce_seconds=float(
             os.getenv("CODEMAFIA_AUTO_TEST_DEBOUNCE_SECONDS", "1.0")
         ),
@@ -131,6 +161,7 @@ async def lifespan(app: FastAPI):
                 app.state.room_connection_manager,
                 signing_key=signing_key,
                 room_locks=app.state.room_coordinator.room_locks,
+                metrics=app.state.operational_metrics,
             )
             result_task = asyncio.create_task(
                 RunnerResultWorker(runner_repository, result_processor).run(result_stop),
@@ -174,3 +205,22 @@ async def health_check(request: Request) -> dict[str, str]:
     except RedisError as exc:
         raise HTTPException(status_code=503, detail="Room storage unavailable.") from exc
     return {"status": "ok"}
+
+
+@app.get("/ops/metrics", response_class=PlainTextResponse)
+async def operational_metrics(request: Request) -> PlainTextResponse:
+    configured = metrics_token
+    authorization = request.headers.get("authorization", "")
+    if not configured or not hmac.compare_digest(
+        authorization.encode("utf-8"), f"Bearer {configured}".encode("utf-8")
+    ):
+        raise HTTPException(status_code=404, detail="Not found.")
+    try:
+        redis_up = bool(await request.app.state.redis_client.ping())
+    except RedisError:
+        redis_up = False
+    return PlainTextResponse(
+        request.app.state.operational_metrics.render(redis_up=redis_up),
+        media_type="text/plain; version=0.0.4",
+        headers={"Cache-Control": "no-store"},
+    )

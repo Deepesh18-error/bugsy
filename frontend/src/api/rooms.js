@@ -1,4 +1,4 @@
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000').replace(/\/$/, '');
+import { API_BASE_URL } from './baseUrl.js';
 
 export function roomWebSocketUrl() {
   const url = new URL(`${API_BASE_URL}/api/rooms/ws`);
@@ -42,6 +42,7 @@ export function requireRoomSnapshot(snapshot) {
     'room_code', 'phase', 'capacity', 'expires_at', 'phase_deadline_at',
     'self_player_id', 'own_category_vote_id', 'has_cast_player_vote', 'own_player_vote_target_id',
     'own_meetings_used', 'meeting_cooldown_until', 'chat_messages', 'own_role', 'own_objectives',
+    'own_sabotage_credits_remaining', 'own_sabotage_cooldown_until',
     'selected_category_id', 'round_number', 'round_ended_at', 'round_end_reason',
     'challenge_id', 'challenge_version', 'current_source_revision_id',
     'official_result', 'official_runs', 'match_result', 'last_vote_result', 'players',
@@ -81,6 +82,12 @@ export function requireRoomSnapshot(snapshot) {
       && message.message.length <= 500 && message.message === message.message.trim()
       && isUtcTime(message.sent_at))
     || (snapshot.own_role !== null && !['civilian', 'impostor'].includes(snapshot.own_role))
+    || (snapshot.own_sabotage_credits_remaining != null
+      && (!Number.isInteger(snapshot.own_sabotage_credits_remaining)
+        || snapshot.own_sabotage_credits_remaining < 0 || snapshot.own_sabotage_credits_remaining > 3
+        || snapshot.own_role !== 'impostor'))
+    || (snapshot.own_sabotage_cooldown_until != null
+      && (!isUtcTime(snapshot.own_sabotage_cooldown_until) || snapshot.own_role !== 'impostor'))
     || !isCategory(snapshot.selected_category_id)
     || (snapshot.round_number !== null && (!Number.isInteger(snapshot.round_number)
       || snapshot.round_number < 0 || snapshot.round_number > 4))
@@ -219,4 +226,16 @@ export function toLobbyView(snapshot) {
       tone: playerTones[index % playerTones.length],
     })),
   };
+}
+
+
+export async function loadChallengeCategories() {
+  const response = await fetch(`${API_BASE_URL}/api/rooms/catalog`, { cache: 'no-store' });
+  if (!response.ok) throw new Error('Challenge categories could not be loaded.');
+  const payload = await response.json();
+  if (!Array.isArray(payload.category_ids)
+    || !payload.category_ids.every((id) => SERVER_CATEGORY_IDS.includes(id))) {
+    throw new Error('The challenge catalog is incompatible.');
+  }
+  return payload.category_ids;
 }

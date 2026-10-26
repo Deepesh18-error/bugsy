@@ -1,0 +1,63 @@
+{
+  "room_code": "TEST42",
+  "phase": "coding_round",
+  "capacity": 5,
+  "expires_at": "2026-10-26T19:47:42Z",
+  "phase_deadline_at": "2026-10-26T18:52:42Z",
+  "self_player_id": "player-4",
+  "own_category_vote_id": null,
+  "has_cast_player_vote": false,
+  "own_player_vote_target_id": null,
+  "own_meetings_used": 0,
+  "meeting_cooldown_until": null,
+  "chat_messages": [],
+  "own_role": "impostor",
+  "own_objectives": [],
+  "own_sabotage_credits_remaining": 3,
+  "own_sabotage_cooldown_until": null,
+  "selected_category_id": "object-oriented",
+  "round_number": 1,
+  "round_ended_at": null,
+  "round_end_reason": null,
+  "challenge_id": "oop.counter",
+  "challenge_version": "1.0.0",
+  "current_source_revision_id": "revision-1",
+  "official_result": null,
+  "official_runs": [],
+  "match_result": null,
+  "last_vote_result": null,
+  "players": [
+    {
+      "player_id": "player-1",
+      "display_name": "Player 1",
+      "connection": "connected",
+      "is_ready": false,
+      "is_alive": true,
+      "is_host": true
+    },
+    {
+      "player_id": "player-2",
+      "display_name": "Player 2",
+      "connection": "connected",
+      "is_ready": false,
+      "is_alive": true,
+      "is_host": false
+    },
+    {
+      "player_id": "player-3",
+      "display_name": "Player 3",
+      "connection": "connected",
+      "is_ready": false,
+      "is_alive": true,
+      "is_host": false
+    },
+    {
+      "player_id": "player-4",
+      "display_name": "Player 4",
+      "connection": "connected",
+      "is_ready": false,
+      "is_alive": true,
+      "is_host": false
+    }
+  ]
+}

@@ -7,6 +7,7 @@ from typing import Awaitable, Callable
 
 from contracts import RunnerJob
 from . import oop_counter_v1 as counter
+from . import collections_v1 as collections
 
 
 TestFunction = Callable[[counter.CounterSession], Awaitable[None]]
@@ -50,7 +51,43 @@ COUNTER = ChallengeSpec(
     ),
 )
 
-_REGISTRY = {(COUNTER.challenge_id, COUNTER.version, COUNTER.content_digest): COUNTER}
+
+COUNTER_1_1 = ChallengeSpec(
+    challenge_id='oop.counter', version='1.1.0',
+    content_digest='sha256:7bb845ee987d83f6c25614771dbf854930e9a9920716189e5289436550c76958', runtime_policy="python-standard-v1",
+    tests=(
+        TrustedTest('increment-changes-count', 'counter_increment_changes_count', True, counter.counter_increment_changes_count),
+        TrustedTest('decrement-subtracts-one', 'counter_decrement_subtracts_one', True, counter.counter_decrement_subtracts_one),
+        TrustedTest('reset-sets-count-to-zero', 'counter_reset_sets_count_to_zero', True, counter.counter_reset_sets_count_to_zero),
+        TrustedTest('value-returns-count', 'counter_value_returns_count', True, counter.counter_value_returns_count),
+        TrustedTest('history-preserves-operation-order', 'counter_history_preserves_operation_order', True, counter.counter_history_preserves_operation_order),
+    ),
+)
+
+STACK = ChallengeSpec(
+    challenge_id='oop.stack', version='1.0.0',
+    content_digest='sha256:22f77171b64f0e2b22ab2d344ef66f8d855bf6d57dd798a097527dd9f475b583', runtime_policy="python-standard-v1",
+    tests=(
+        TrustedTest('push-size', 'oop_stack_push_size', True, collections.oop_stack_push_size),
+        TrustedTest('pop-order', 'oop_stack_pop_order', True, collections.oop_stack_pop_order),
+        TrustedTest('peek-preserves', 'oop_stack_peek_preserves', True, collections.oop_stack_peek_preserves),
+        TrustedTest('empty-reuse', 'oop_stack_empty_reuse', True, collections.oop_stack_empty_reuse),
+    ),
+)
+
+WALLET = ChallengeSpec(
+    challenge_id='backend.wallet', version='1.0.0',
+    content_digest='sha256:6faede3edf457ddb4e81af07bf94eb45b27861a6a7cb4b7fcfff4fe6ebe25aa5', runtime_policy="python-standard-v1",
+    tests=(
+        TrustedTest('deposit-balance', 'backend_wallet_deposit_balance', True, collections.backend_wallet_deposit_balance),
+        TrustedTest('withdraw-bounds', 'backend_wallet_withdraw_bounds', True, collections.backend_wallet_withdraw_bounds),
+        TrustedTest('statement-copy', 'backend_wallet_statement_copy', True, collections.backend_wallet_statement_copy),
+        TrustedTest('invalid-amounts', 'backend_wallet_invalid_amounts', True, collections.backend_wallet_invalid_amounts),
+    ),
+)
+
+_REGISTRY = {(spec.challenge_id, spec.version, spec.content_digest): spec
+             for spec in (COUNTER, COUNTER_1_1, STACK, WALLET)}
 
 
 def resolve_job(job: RunnerJob) -> ChallengeSpec:

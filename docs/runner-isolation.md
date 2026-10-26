@@ -4,7 +4,7 @@
 
 1. FastAPI validates an official-test request and queues an immutable job with the current saved source revision.
 2. The runner independently validates the queue schema and the allowlisted challenge ID, version, digest, and complete test list.
-3. Each trusted Counter test starts a fresh nsjail process containing only the submitted source and a small operation server. The test itself stays in the runner supervisor and checks observable `Counter` behavior over a bounded JSON protocol.
+3. Each trusted challenge test starts a fresh nsjail process containing only the submitted source and a small operation server. The test itself stays in the runner supervisor and checks observable `Counter`, `Stack` or `Wallet` behavior over a bounded JSON protocol.
 4. The runner builds the verdict, signs it with `CODEMAFIA_RUNNER_RESULT_HMAC_KEY`, and publishes it once per run ID. The job is acknowledged only after publication.
 5. FastAPI verifies the signature, registered job, content pin, test set, room, round, deadline, and source revision before its game engine may accept the result.
 
@@ -24,9 +24,13 @@ The worker runs an isolation preflight before it reads jobs. If the host or cont
 
 1. Use the same randomly generated signing key of at least 32 bytes for FastAPI and the runner. Both `.env.example` files intentionally leave it empty.
 2. Start Redis, then start the runner with the `runner` Compose profile, and start FastAPI with its Redis URL and signing key set.
-3. A current live match can use only the pinned `oop.counter` version `1.0.0` with the digest in `services/runner/challenges/registry.py`. Editing that authored JSON changes the digest and requires intentional registry review.
+3. Live matches use pinned Counter 1.1, Stack 1.0 or Wallet 1.0 definitions with digests in `services/runner/challenges/registry.py`. Editing that authored JSON changes the digest and requires intentional registry review.
 
-The Counter challenge is still marked `draft` in the authored bank. The development match policy may offer it; production match setup requires reviewed content. This registry pin approves the executable test mapping for the current content digest and does not change its editorial review status.
+The selectable challenges are still marked `draft` in the authored bank. Development
+may offer it; staging requires an explicit draft-playtest setting; production
+requires reviewed content. This registry pin approves the executable test
+mapping for the current content digest and does not change its editorial
+review status.
 
 ## Recovery and limits of validation
 
@@ -39,4 +43,10 @@ The official runner needs a compatible Linux kernel and container runtime. Compo
 - On a development machine, run the permanent backend runner checks with `PYTHONPATH=backend python -m unittest discover -s backend/tests/runner -v` and the independent runner checks with `PYTHONPATH=services/runner python -m unittest discover -s services/runner/tests -v`. On PowerShell, set `$env:PYTHONPATH` before each command.
 - On the target Linux Docker host, build the runner and run `docker compose -f infra/compose.yaml --profile runner run --rm --no-deps runner python -m unittest discover -s tests -v`. The tests exercise the real nsjail preflight, correct solution, infinite loop, oversized output, malformed Python, filesystem/network access, memory/process limits, and signing-key absence. Any skipped or failed jail test means the isolation exit gate has not passed.
 - Then run a complete local match with Redis, FastAPI, editor sync, runner, and two browser sessions. Verify an official failing result, a saved edit, a second official run, an edit while a job is pending, reconnect with the public result restored, and a winning result. The runner must not be considered deployable from contract tests alone.
-- The optional Pyodide check runs shared code in a same-origin browser Worker. Worker termination bounds a hung check and keeps the UI responsive; it is not a security boundary against hostile code. A player must opt in to running it. Production use with untrusted strangers needs a separate uncredentialed origin or equivalent isolation. Official outcomes use only the Linux runner.
+- The optional Pyodide check runs shared code in a same-origin browser Worker.
+  Worker termination bounds a hung check and keeps the UI responsive; it is
+  **not** a security boundary against hostile code. Automatic and manual
+  browser execution are now enabled only in Vite development builds. Public
+  staging/production builds use official server checks only. Reintroducing
+  browser checks for strangers requires a separate credential-free origin or
+  equivalent isolation. Official outcomes always use only the Linux runner.

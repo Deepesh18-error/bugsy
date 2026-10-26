@@ -61,7 +61,7 @@ def main() -> None:
         request: object = None
         try:
             request = json.loads(line)
-            if not isinstance(request, dict) or set(request) - {"op", "name", "nonce"}:
+            if not isinstance(request, dict) or set(request) - {"op", "name", "nonce", "args"}:
                 raise ValueError("invalid operation")
             nonce = request.get("nonce")
             if not isinstance(nonce, str) or len(nonce) != 32:
@@ -69,18 +69,26 @@ def main() -> None:
             if load_failed:
                 raise RuntimeError("submission could not load")
             operation = request.get("op")
+            arguments = request.get("args", [])
+            if not isinstance(arguments, list) or len(arguments) > 1:
+                raise ValueError("invalid arguments")
             with redirect_stdout(sink):
-                if operation == "construct" and "name" not in request:
-                    counter_type = namespace.get("Counter")
+                if operation == "construct" and request.get("name", "Counter") in {"Counter", "Stack", "Wallet"} and not arguments:
+                    counter_type = namespace.get(request.get("name", "Counter"))
                     if not isinstance(counter_type, type):
                         raise TypeError("Counter class is missing")
                     instance = counter_type()
                     value: object = None
-                elif operation == "call" and request.get("name") in {"increment", "decrement", "reset", "value"}:
+                elif operation == "call" and request.get("name") in {"increment", "decrement", "reset", "value", "push", "pop", "peek", "size", "deposit", "withdraw", "statement", "statement_is_copy"}:
                     if instance is None:
                         raise RuntimeError("Counter was not constructed")
-                    value = getattr(instance, request["name"])()
-                elif operation == "read" and request.get("name") in {"count", "history"}:
+                    if request["name"] == "statement_is_copy":
+                        statement = instance.statement()
+                        statement.append("alias-probe")
+                        value = "alias-probe" not in instance.history
+                    else:
+                        value = getattr(instance, request["name"])(*arguments)
+                elif operation == "read" and request.get("name") in {"count", "history", "balance"}:
                     if instance is None:
                         raise RuntimeError("Counter was not constructed")
                     value = getattr(instance, request["name"])

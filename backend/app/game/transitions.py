@@ -71,6 +71,7 @@ from .deadlines import (
     require_utc_time,
 )
 from .models import (
+    MAX_SABOTAGE_CREDITS, SABOTAGE_COOLDOWN_SECONDS, SABOTAGE_RESPONSE_SECONDS,
     ConnectionStatus,
     ChatMessageRecord,
     DeadlineKind,
@@ -93,6 +94,7 @@ from .models import (
     RoundState,
     RoundEndReason,
     TestPassEvidence,
+    SabotageObjectiveProgress,
     Vote,
     VoteKind,
     VoteResolution,
@@ -892,6 +894,8 @@ def record_source_revision(
     updated_round = replace(
         current,
         current_source_revision_id=source_revision_id,
+        sabotage_objectives=tuple(SabotageObjectiveProgress(objective_id=item.objective_id)
+                                  for item in current.sabotage_objectives),
         official_test_result=None,
         official_run_progress=tuple(stale_progress),
     )
@@ -1054,6 +1058,14 @@ def record_verified_sabotage_objective(
         return _reject(state, RejectionCode.INVALID_SELECTION, "No active impostor is assigned.")
     if current.sabotage_objectives[index].status is ObjectiveStatus.COMPLETED:
         return _accepted(state)
+    already_charged = any(item.status is ObjectiveStatus.COMPLETED for item in current.sabotage_objectives)
+    if not already_charged and (
+        state.match.sabotage_credits_used >= MAX_SABOTAGE_CREDITS
+        or (state.match.sabotage_cooldown_until is not None and now < state.match.sabotage_cooldown_until)
+    ):
+        return _reject(state, RejectionCode.INVALID_OBJECTIVE, "Sabotage credit is on cooldown or exhausted.")
+    if (current.deadline.due_at - now).total_seconds() < SABOTAGE_RESPONSE_SECONDS:
+        return _reject(state, RejectionCode.INVALID_OBJECTIVE, "Insufficient time for civilians to respond.")
     objectives = list(current.sabotage_objectives)
     objectives[index] = replace(
         objectives[index],
@@ -1062,7 +1074,12 @@ def record_verified_sabotage_objective(
         completed_at=now,
     )
     updated_round = replace(current, sabotage_objectives=tuple(objectives))
-    updated_match = replace(state.match, current_round=updated_round)
+    updated_match = replace(
+        state.match, current_round=updated_round,
+        sabotage_credits_used=state.match.sabotage_credits_used + int(not already_charged),
+        sabotage_cooldown_until=(state.match.sabotage_cooldown_until if already_charged
+                                 else now + timedelta(seconds=SABOTAGE_COOLDOWN_SECONDS)),
+    )
     events: list[GameEvent] = [
         SabotageObjectiveVerified(
             occurred_at=now,
@@ -1072,27 +1089,6 @@ def record_verified_sabotage_objective(
             source_revision_id=source_revision_id,
         )
     ]
-    if all(item.status is ObjectiveStatus.COMPLETED for item in objectives):
-        result = MatchResult(
-            winner=MatchWinner.IMPOSTOR,
-            reason=MatchEndReason.SABOTAGE_OBJECTIVES_COMPLETED,
-            round_number=current.number,
-            ended_at=now,
-        )
-        updated_match = replace(updated_match, result=result)
-        events.append(
-            MatchEnded(
-                occurred_at=now,
-                request_id=None,
-                winner=result.winner,
-                reason=result.reason,
-                round_number=result.round_number,
-            )
-        )
-        return _accepted(
-            replace(state, phase=GamePhase.GAME_OVER, phase_deadline=None, match=updated_match),
-            *events,
-        )
     return _accepted(replace(state, match=updated_match), *events)
 
 
@@ -1270,6 +1266,24 @@ def end_coding_round(
             for item in current_round.official_run_progress
         ),
     )
+    objectives = current_round.sabotage_objectives
+    sabotage_holds = bool(objectives) and all(
+        item.status is ObjectiveStatus.COMPLETED
+        and item.verified_revision_id == current_round.current_source_revision_id
+        and item.completed_at is not None
+        and (deadline.due_at - item.completed_at).total_seconds() >= SABOTAGE_RESPONSE_SECONDS
+        for item in objectives
+    ) and current_round.official_test_result is not None and not current_round.official_test_result.all_required_tests_passed
+    if sabotage_holds and any(p.role is PlayerRole.IMPOSTOR and p.is_alive for p in state.players):
+        result = MatchResult(MatchWinner.IMPOSTOR, MatchEndReason.SABOTAGE_OBJECTIVES_COMPLETED,
+                             current_round.number, now)
+        updated = replace(state, phase=GamePhase.GAME_OVER, phase_deadline=None,
+                          match=replace(state.match, current_round=ended_round, result=result))
+        return _accepted(updated,
+            RoundEnded(occurred_at=now, request_id=None, round_number=current_round.number,
+                       reason=RoundEndReason.DEADLINE_EXPIRED),
+            MatchEnded(occurred_at=now, request_id=None, winner=result.winner,
+                       reason=result.reason, round_number=result.round_number))
     if current_round.number == MAX_ROUNDS:
         impostor = next(
             (player for player in state.players if player.role is PlayerRole.IMPOSTOR),

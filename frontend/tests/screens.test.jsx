@@ -60,4 +60,12 @@ describe('live screen actions', () => {
     expect(screen.getByRole('button', { name: 'Run official tests' })).toBeEnabled();
     expect(screen.queryByRole('button', { name: 'Finalize verified solution' })).not.toBeInTheDocument();
   });
+
+  it('offers only isolated official checks in a public build', () => {
+    render(<TestResults bundle={{ tests: [] }} provisional={{ status: 'idle', outcomes: [] }}
+      official={null} revisionId="saved-revision" officialStatus="idle" canRun
+      browserFeedbackEnabled={false} onRunProvisional={vi.fn()} onRunOfficial={vi.fn()} />);
+    expect(screen.queryByRole('button', { name: 'Run public checks' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Run official tests' })).toBeEnabled();
+  });
 });

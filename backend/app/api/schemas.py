@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from app.challenges.loader import load_challenge
 from app.game.models import (
     ConnectionStatus, GamePhase, ObjectiveStatus, OfficialRunStatus, PlayerRole,
-    RoomState, RoundEndReason,
+    RoomState, RoundEndReason, MAX_SABOTAGE_CREDITS,
 )
 from app.rooms.identity import normalize_display_name
 
@@ -114,6 +114,8 @@ class RoomSnapshot(ApiModel):
     chat_messages: tuple[ChatMessageSummary, ...] = Field(max_length=100)
     own_role: PlayerRole | None
     own_objectives: tuple[OwnObjective, ...]
+    own_sabotage_credits_remaining: int | None = None
+    own_sabotage_cooldown_until: datetime | None = None
     selected_category_id: str | None
     round_number: int | None
     round_ended_at: datetime | None
@@ -236,6 +238,10 @@ def build_room_response(room: RoomState, player_id: str) -> RoomResponse:
             ) for item in room.chat_messages),
             own_role=player.role,
             own_objectives=own_objectives,
+            own_sabotage_credits_remaining=(MAX_SABOTAGE_CREDITS - match.sabotage_credits_used
+                                           if match and player.role is PlayerRole.IMPOSTOR else None),
+            own_sabotage_cooldown_until=(match.sabotage_cooldown_until
+                                        if match and player.role is PlayerRole.IMPOSTOR else None),
             selected_category_id=match.selected_category_id if match else None,
             round_number=match.round_number if match else None,
             round_ended_at=current_round.ended_at if current_round else None,

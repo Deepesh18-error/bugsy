@@ -93,7 +93,12 @@ async def create_room(
 ) -> RoomResponse | JSONResponse:
     try:
         _require_allowed_origin(request)
+        if not getattr(request.app.state, "accept_new_matches", True):
+            raise RoomServiceError("NEW_MATCHES_PAUSED", "New matches are temporarily paused.", 503)
         result = await _service(request).create_room(payload.display_name, payload.capacity)
+        metrics = getattr(request.app.state, "operational_metrics", None)
+        if metrics is not None:
+            metrics.increment("room_created")
         return _success(response, result, request)
     except (RoomServiceError, RoomStorageError) as exc:
         return _error(exc)
@@ -144,3 +149,11 @@ async def leave_room(request: Request, response: Response) -> Response:
         return response
     except (RoomServiceError, RoomStorageError) as exc:
         return _error(exc)
+
+
+@router.get("/catalog")
+async def challenge_catalog(request: Request):
+    """Only expose categories that this deployment can actually start."""
+    from app.realtime.match_setup import MatchSetupPolicy, available_categories
+    policy = MatchSetupPolicy(allow_draft_content=getattr(request.app.state, "allow_draft_content", False))
+    return JSONResponse({"category_ids": available_categories(policy)}, headers={"Cache-Control": "no-store"})

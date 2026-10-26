@@ -16,6 +16,7 @@ from app.game.models import (
 )
 from app.game.outcomes import RejectionCode, TransitionAccepted, TransitionRejected
 from app.game.transitions import (
+    end_coding_round,
     record_official_test_result,
     record_source_revision,
     record_verified_sabotage_objective,
@@ -81,20 +82,42 @@ class SabotageAndRevisionTests(unittest.TestCase):
             first.state, "break-reset", "revision-1", NOW + timedelta(seconds=4)
         )
         self.assertIsInstance(second, TransitionAccepted)
-        self.assertEqual(second.state.phase, GamePhase.GAME_OVER)
-        self.assertEqual(
-            second.state.match.result.reason, MatchEndReason.SABOTAGE_OBJECTIVES_COMPLETED
-        )
-        self.assertTrue(any(isinstance(event, MatchEnded) for event in second.events))
-        self.assertTrue(all(
-            objective.status is ObjectiveStatus.COMPLETED
-            for objective in second.state.match.current_round.sabotage_objectives
-        ))
-        late = record_verified_sabotage_objective(
-            second.state, "break-reset", "revision-1", NOW + timedelta(seconds=5)
-        )
-        self.assertIsInstance(late, TransitionRejected)
-        self.assertEqual(late.code, RejectionCode.WRONG_PHASE)
+        self.assertEqual(second.state.phase, GamePhase.CODING_ROUND)
+        self.assertIsNone(second.state.match.result)
+        self.assertEqual(second.state.match.sabotage_credits_used, 1)
+        failed = OfficialTestResult("verified-run", "revision-1", NOW + timedelta(seconds=4),
+                                    failed_test_ids=("decrement",))
+        checked = record_official_test_result(second.state, failed, NOW + timedelta(seconds=4))
+        due = checked.state.match.current_round.deadline.due_at
+        ended = end_coding_round(checked.state, due, deadline_id="coding-1")
+        self.assertEqual(ended.state.phase, GamePhase.GAME_OVER)
+        self.assertEqual(ended.state.match.result.reason, MatchEndReason.SABOTAGE_OBJECTIVES_COMPLETED)
+        self.assertTrue(any(isinstance(event, MatchEnded) for event in ended.events))
+
+    def test_edit_clears_verification_and_cooldown_survives_restore(self):
+        room = make_coding_room()
+        current = replace(room.match.current_round, sabotage_objectives=(SabotageObjectiveProgress("target"),))
+        room = replace(room, match=replace(room.match, current_round=current))
+        verified = record_verified_sabotage_objective(room, "target", "revision-1", NOW)
+        edited = record_source_revision(verified.state, "revision-2", NOW + timedelta(seconds=1))
+        self.assertEqual(edited.state.match.current_round.sabotage_objectives[0].status, ObjectiveStatus.NOT_STARTED)
+        self.assertEqual(edited.state.match.sabotage_credits_used, 1)
+        denied = record_verified_sabotage_objective(edited.state, "target", "revision-2", NOW + timedelta(seconds=2))
+        self.assertIsInstance(denied, TransitionRejected)
+        due = edited.state.match.current_round.deadline.due_at
+        ended = end_coding_round(edited.state, due, deadline_id="coding-1")
+        self.assertEqual(ended.state.phase, GamePhase.ROUND_RESULT)
+
+    def test_budget_and_response_window_are_enforced(self):
+        room = make_coding_room()
+        current = replace(room.match.current_round, sabotage_objectives=(SabotageObjectiveProgress("target"),))
+        room = replace(room, match=replace(room.match, current_round=current))
+        exhausted = replace(room, match=replace(room.match, sabotage_credits_used=3))
+        self.assertIsInstance(record_verified_sabotage_objective(exhausted, "target", "revision-1", NOW), TransitionRejected)
+        late = current.deadline.due_at - timedelta(seconds=29)
+        self.assertIsInstance(record_verified_sabotage_objective(room, "target", "revision-1", late), TransitionRejected)
+        boundary = current.deadline.due_at - timedelta(seconds=30)
+        self.assertIsInstance(record_verified_sabotage_objective(room, "target", "revision-1", boundary), TransitionAccepted)
 
     def test_unknown_objective_and_verdict_at_deadline_are_rejected(self) -> None:
         room = make_coding_room()

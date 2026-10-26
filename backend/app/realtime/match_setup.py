@@ -49,24 +49,31 @@ class MatchSetupPolicy:
             raise ValueError("Meeting cooldown duration must be a positive integer.")
 
 
-# Only the Counter challenge exists today. The catalog is deliberately small
-# until other categories have reviewed, version-pinned content.
-PINNED_CHALLENGES = {"object-oriented": ("oop.counter", "1.0.0")}
+# Explicit content pins; draft versions remain staging/development-only.
+PINNED_CHALLENGES = {
+    "object-oriented": (("oop.counter", "1.1.0"), ("oop.stack", "1.0.0")),
+    "back-end": (("backend.wallet", "1.0.0"),),
+}
+
+
+def eligible_challenges(category_id: str, policy: MatchSetupPolicy) -> tuple[LoadedChallenge, ...]:
+    candidates = []
+    for identity in PINNED_CHALLENGES.get(category_id, ()):
+        try:
+            loaded = load_challenge(*identity)
+        except ChallengeLoadError:
+            continue
+        if loaded.challenge.category != category_id:
+            continue
+        if loaded.challenge.authorship.review_status == "draft" and not policy.allow_draft_content:
+            continue
+        candidates.append(loaded)
+    return tuple(candidates)
 
 
 def eligible_challenge(category_id: str, policy: MatchSetupPolicy) -> LoadedChallenge | None:
-    identity = PINNED_CHALLENGES.get(category_id)
-    if identity is None:
-        return None
-    try:
-        loaded = load_challenge(*identity)
-    except ChallengeLoadError:
-        return None
-    if loaded.challenge.category != category_id:
-        return None
-    if loaded.challenge.authorship.review_status == "draft" and not policy.allow_draft_content:
-        return None
-    return loaded
+    candidates = eligible_challenges(category_id, policy)
+    return candidates[0] if candidates else None
 
 
 def available_categories(policy: MatchSetupPolicy) -> tuple[str, ...]:
@@ -206,12 +213,7 @@ def make_next_round(
     ):
         raise ValueError("A completed coding round is required to prepare the next round.")
     category_id = match.selected_category_id
-    candidates: list[LoadedChallenge] = []
-    identity = PINNED_CHALLENGES.get(category_id)
-    if identity is not None:
-        loaded = eligible_challenge(category_id, policy)
-        if loaded is not None:
-            candidates.append(loaded)
+    candidates = eligible_challenges(category_id, policy)
     if not candidates:
         raise ValueError("No eligible challenge is available for the selected category.")
     used = {

@@ -13,7 +13,7 @@ service, the Linux jail, and four browsers work together.
 | Editor | current room/match/round, guessed IDs, departed or eliminated players, stale writes, Yjs convergence | `backend/tests/editor/`, `services/editor-sync/tests/` |
 | Runner | pinned tests, signed/current results, queue pressure, malformed results, job coalescing | `backend/tests/runner/`, `services/runner/tests/test_contract_and_parser.py` |
 | Linux isolation | infinite loop, output, filesystem/network/import attempts, memory/process limits, scratch cleanup | `services/runner/tests/test_sandbox_integration.py` **inside the runner image** |
-| Frontend decisions | form validation, readiness controls, private ballot, stale official result | `frontend/tests/screens.test.jsx` |
+| Frontend decisions | form validation, readiness controls, private ballot, stale official result, public-build browser-check removal | `frontend/tests/screens.test.jsx` |
 | Browser interaction | four separate player sessions through result; refresh and tab reopen | `frontend/e2e/match-flow.spec.js`, `reconnect.spec.js` |
 | Browser privacy | each socket receives only its own role and objectives | `frontend/e2e/privacy.spec.js` |
 | Accessibility | all preview screens, keyboard focus, and narrow-screen overflow | `frontend/e2e/accessibility.spec.js` |
@@ -29,6 +29,7 @@ separately because its local fixtures are imported by name:
 .\.venv\Scripts\python.exe -m unittest discover -s tests/api -v
 .\.venv\Scripts\python.exe -m unittest discover -s tests/editor -v
 .\.venv\Scripts\python.exe -m unittest discover -s tests/runner -v
+.\.venv\Scripts\python.exe -m unittest discover -s tests/challenges -v
 ```
 
 From `services/editor-sync/`, run `npm test`. This includes a loopback
@@ -69,7 +70,9 @@ needs a running Docker daemon.
   are checked by FastAPI before they become shared state. The restore HTTP
   response uses a fixed public error rather than reflecting internal details.
 - Official results must match a pinned challenge and saved revision and have
-  a valid runner signature. Browser Pyodide feedback remains provisional.
+  a valid runner signature. Same-origin browser Pyodide execution is limited
+  to local development builds because a Worker cannot isolate hostile shared
+  Python from the browser's network access.
 - Routine logs use static operational messages, exception class names, and
   run IDs. They do not intentionally record cookies, player roles, chat text,
   or submitted source. Tracebacks from untrusted or storage failures are not
@@ -92,9 +95,26 @@ needs a running Docker daemon.
 
 ## Current validation status
 
-As of 2026-10-25, editor service loopback tests, focused backend editor and
-runner tests, frontend component checks, and three browser accessibility checks
-have run locally. The live browser journeys, Redis restart/outage exercise,
-and Linux nsjail checks remain unverified because the Docker daemon and live
-services were unavailable on this Windows workspace. See
+As of 2026-10-25, 53 game, 52 realtime, 19 API, 19 editor, and 15 backend runner
+tests pass locally, alongside five frontend component checks and a production
+build. Editor service loopback tests and three browser preview accessibility
+checks also passed earlier that day. The live browser journeys, Redis
+restart/outage exercise, API container build, and Linux nsjail checks remain
+unverified because the Docker daemon and live services were unavailable on
+this Windows workspace. See
 `docs/release-checklist.md` before describing the product as fully validated.
+
+
+## October 27 additions
+
+- Runner attribution tests cover civilian regressions, mixed-author changes,
+  restore/last-author laundering, target-only damage, syntax/runtime failure,
+  private budgets, persistence and duplicate results.
+- Challenge tests check digests, references/starters, plausible sabotage, copy
+  aliasing, category eligibility, unused challenge selection and cache invalidation.
+- `frontend/e2e/repair-and-recovery.spec.js` covers four-player repair, civilian
+  regression, attributable sabotage without instant victory, mid-round reload,
+  repair/finalization and rematch. It requires the complete live stack.
+- Linux isolation tests now exercise all authored reference solutions through
+  the actual jail protocol. Skipped tests remain unverified.
+- Public frontend builds exclude the Pyodide worker and its emitted assets.

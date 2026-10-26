@@ -39,7 +39,7 @@ from app.rooms.repository import (
 )
 
 
-STORAGE_VERSION = 6
+STORAGE_VERSION = 7
 LEGACY_STORAGE_VERSION = 1
 PREVIOUS_STORAGE_VERSION = 4
 OLDER_STORAGE_VERSION = 3
@@ -50,6 +50,7 @@ SUPPORTED_STORAGE_VERSIONS = (
     OLDER_STORAGE_VERSION,
     PREVIOUS_STORAGE_VERSION,
     5,
+    6,
     STORAGE_VERSION,
 )
 MAX_ROOM_BYTES = 1_048_576
@@ -258,6 +259,8 @@ def _match(value: dict[str, Any] | None) -> MatchState | None:
             _date(value["meeting_cooldown_until"]) if value["meeting_cooldown_until"] else None
         ),
         rematch_requests=tuple(value["rematch_requests"]),
+        sabotage_credits_used=value.get("sabotage_credits_used", 0),
+        sabotage_cooldown_until=_date(value["sabotage_cooldown_until"]) if value.get("sabotage_cooldown_until") else None,
     )
 
 

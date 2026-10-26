@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { createRoom, joinRoom, leaveRoom, resumeRoom, toLobbyView } from './api/rooms.js';
+import { createRoom, joinRoom, leaveRoom, resumeRoom, toLobbyView, loadChallengeCategories } from './api/rooms.js';
 import useRoomSocket from './hooks/useRoomSocket.js';
 import {
   buildPreviewPeerVotes,
@@ -40,7 +40,7 @@ const LIVE_CATEGORY_IDS = {
 const LIVE_CATEGORIES = CATEGORIES.map((category) => ({
   ...category,
   id: LIVE_CATEGORY_IDS[category.id] ?? category.id,
-})).filter((category) => category.id === 'object-oriented');
+}));
 
 function liveVoteResult(snapshot) {
   const vote = snapshot?.last_vote_result;
@@ -76,7 +76,7 @@ function liveResultView(snapshot) {
     required_tests_passed: 'The group finalized a verified solution.',
     impostor_ejected: 'The vote ejected the impostor.',
     impostor_departed: 'The impostor left the match.',
-    sabotage_objectives_completed: 'The impostor completed the verified sabotage objective.',
+    sabotage_objectives_completed: 'The verified sabotage remained in place until the round deadline.',
     final_deadline_survived: 'The impostor survived the final round deadline.',
   }[match.reason] || 'The server resolved the match.';
   return {
@@ -90,6 +90,9 @@ function liveResultView(snapshot) {
 }
 
 export default function App() {
+  const [liveCategoryIds, setLiveCategoryIds] = useState([]);
+  const [catalogError, setCatalogError] = useState('');
+  const liveCategories = LIVE_CATEGORIES.filter((category) => liveCategoryIds.includes(category.id));
   const [screen, setScreen] = useState('welcome');
   const [room, setRoom] = useState(null);
   const [roomMode, setRoomMode] = useState(null);
@@ -136,6 +139,17 @@ export default function App() {
 
   // A phase change replaces the main screen. Put keyboard and screen-reader
   // focus on its heading instead of leaving it on a removed button/editor.
+  useEffect(() => {
+    if (roomMode !== 'live') return undefined;
+    let active = true;
+    loadChallengeCategories().then((ids) => {
+      if (active) { setLiveCategoryIds(ids); setCatalogError(''); }
+    }).catch(() => {
+      if (active) setCatalogError('Challenge categories could not be loaded. Reconnect to retry.');
+    });
+    return () => { active = false; };
+  }, [roomMode, liveSocket.status]);
+
   const focusKey = roomMode === 'live' ? liveRoomSnapshot?.phase : screen;
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -366,7 +380,7 @@ export default function App() {
       || liveRoomSnapshot.own_category_vote_id
       || isCategorySubmitting
       || liveSocket.status !== 'connected') return;
-    if (!LIVE_CATEGORIES.some((category) => category.id === categoryId)) return;
+    if (!liveCategories.some((category) => category.id === categoryId)) return;
     setIsCategorySubmitting(true);
     setCategoryVoteMessage('Sending your vote to the server…');
     setCategoryVoteMessageStatus('loading');
@@ -764,7 +778,7 @@ export default function App() {
     if (phase === 'category_vote' || (phase === 'role_reveal' && liveResult)) {
       return (
         <CategoryVoteScreen
-          categories={LIVE_CATEGORIES}
+          categories={liveCategories}
           roomCode={room.code}
           voteCounts={liveResult?.voteCounts ?? {}}
           selectedCategoryId={liveRoomSnapshot?.own_category_vote_id ?? null}
@@ -775,7 +789,7 @@ export default function App() {
           isLive
           isSubmitting={isCategorySubmitting}
           isDisabled={liveSocket.status !== 'connected'}
-          statusMessage={liveSocket.error || (liveSocket.status !== 'connected'
+          statusMessage={catalogError || liveSocket.error || (liveSocket.status !== 'connected'
             ? 'Connecting to the room before you can vote…'
             : categoryVoteMessage)}
           status={liveSocket.error ? 'error' : categoryVoteMessageStatus}
@@ -864,6 +878,8 @@ export default function App() {
         officialSnapshot={liveRoomSnapshot.official_result}
         officialRuns={liveRoomSnapshot.official_runs}
         ownObjectives={liveRoomSnapshot.own_objectives}
+        sabotageCredits={liveRoomSnapshot.own_sabotage_credits_remaining}
+        sabotageCooldownUntil={liveRoomSnapshot.own_sabotage_cooldown_until}
         ownMeetingsUsed={liveRoomSnapshot.own_meetings_used}
         meetingCooldownUntil={liveRoomSnapshot.meeting_cooldown_until}
         chatMessages={liveChatMessages}

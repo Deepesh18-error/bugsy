@@ -22,7 +22,8 @@ function ResultList({ tests, outcomes, emptyLabel }) {
 /** Distinct panels prevent a local pass from looking like a match verdict. */
 export default function TestResults({ bundle, bundleError, provisional, official, officialStatus,
   officialError, revisionId, canRun, onRunProvisional, onRunOfficial,
-  officialRunStatus = null, canFinalize = false, onFinalize, isFinalizing = false }) {
+  officialRunStatus = null, canFinalize = false, onFinalize, isFinalizing = false,
+  browserFeedbackEnabled = true }) {
   const publicTests = bundle?.tests ?? [];
   const officialIsStale = official && official.source_revision_id !== revisionId;
   const provisionalOutcomes = provisional.status === 'complete' || provisional.status === 'stale'
@@ -31,7 +32,7 @@ export default function TestResults({ bundle, bundleError, provisional, official
 
   return <section className={styles.wrapper} aria-labelledby="feedback-title">
     <h2 id="feedback-title" className={styles.heading}>Code feedback</h2>
-    <div className={styles.panel}>
+    {browserFeedbackEnabled ? <div className={styles.panel}>
       <div className={styles.panelHeader}>
         <h3>Browser check <span className={styles.provisionalLabel}>PROVISIONAL</span></h3>
         <button type="button" onClick={onRunProvisional}
@@ -45,7 +46,7 @@ export default function TestResults({ bundle, bundleError, provisional, official
       {provisional.status === 'stale' && <p className={styles.stale} role="status">Code changed. These browser results are stale; run again.</p>}
       {['timeout', 'error'].includes(provisional.status) && <p className={styles.error} role="alert">{provisional.message}</p>}
       <ResultList tests={publicTests} outcomes={provisionalOutcomes} emptyLabel="Public checks are loading…" />
-    </div>
+    </div> : <p className={styles.detail}>Use official server checks to test the current shared code.</p>}
     <div className={styles.panel}>
       <div className={styles.panelHeader}>
         <h3>Server check <span className={styles.officialLabel}>OFFICIAL</span></h3>

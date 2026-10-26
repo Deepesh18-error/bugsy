@@ -41,6 +41,12 @@ _PUBLIC_TEST_CODE = {
         "counter.count = 7\n"
         "assert counter.value() == 7"
     ),
+    'oop_stack_push_size': 's = Stack()\ns.push(7)\ns.push(0)\nassert s.size() == 2',
+    'oop_stack_pop_order': 's = Stack()\ns.push(3)\ns.push(8)\nassert s.pop() == 8 and s.pop() == 3 and s.size() == 0',
+    'oop_stack_peek_preserves': 's = Stack()\ns.push(4)\nassert s.peek() == 4 and s.peek() == 4 and s.size() == 1',
+    'backend_wallet_deposit_balance': 'w = Wallet()\nassert w.deposit(125) is True\nassert w.balance == 125 and w.history == [125]',
+    'backend_wallet_withdraw_bounds': 'w = Wallet()\nw.deposit(100)\nassert w.withdraw(101) is False\nassert w.balance == 100\nassert w.withdraw(100) is True and w.balance == 0',
+    'backend_wallet_statement_copy': 'w = Wallet()\nw.deposit(37)\ns = w.statement()\nassert s == [37]\ns.append(99)\nassert w.history == [37]',
 }
 
 

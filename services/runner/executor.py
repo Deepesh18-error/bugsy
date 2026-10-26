@@ -89,14 +89,16 @@ class CounterSession:
         with suppress(Exception):
             await asyncio.wait_for(process.wait(), timeout=1.0)
 
-    async def _request(self, operation: str, name: str | None = None) -> object:
+    async def _request(self, operation: str, name: str | None = None, arguments: tuple = ()) -> object:
         process = self._process
         if process is None or process.stdin is None or process.stdout is None:
             raise RunnerInfrastructureError("jail process is unavailable")
         nonce = secrets.token_hex(16)
-        request: dict[str, str] = {"op": operation, "nonce": nonce}
+        request: dict[str, object] = {"op": operation, "nonce": nonce}
         if name is not None:
             request["name"] = name
+        if arguments:
+            request["args"] = arguments
         payload = json.dumps(request, separators=(",", ":")).encode("utf-8") + b"\n"
         remaining = self._deadline - monotonic()
         if remaining <= 0:
@@ -119,11 +121,11 @@ class CounterSession:
             raise SandboxOperationError("submission operation raised an exception")
         return parsed.value
 
-    async def construct(self) -> None:
-        await self._request("construct")
+    async def construct(self, name: str = "Counter") -> None:
+        await self._request("construct", name)
 
-    async def call(self, method: str) -> object:
-        return await self._request("call", method)
+    async def call(self, method: str, *arguments: object) -> object:
+        return await self._request("call", method, arguments)
 
     async def read(self, attribute: str) -> object:
         return await self._request("read", attribute)

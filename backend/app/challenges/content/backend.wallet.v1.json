@@ -1,0 +1,131 @@
+{
+  "schema_version": 1,
+  "id": "backend.wallet",
+  "version": "1.0.0",
+  "category": "back-end",
+  "title": "Repair the Wallet",
+  "prompt": "Use integer cents. Accept only positive integer deposits and withdrawals (booleans are invalid). Reject overdrafts without changing balance or history. Return a copy of the transaction history.",
+  "language": "python",
+  "python_version": "3.13",
+  "starter_code": "class Wallet:\n    def __init__(self):\n        self.balance = 0\n        self.history = []\n\n    def deposit(self, amount):\n        if type(amount) is not int or amount <= 0:\n            return False\n        self.balance += amount\n        self.history.append(amount)\n        return True\n\n    def withdraw(self, amount):\n        if type(amount) is not int or amount <= 0:\n            return False\n        self.balance -= amount\n        self.history.append(-amount)\n        return True\n\n    def statement(self):\n        return [] # TODO: return a copy of history\n",
+  "functions": [
+    {
+      "id": "init",
+      "name": "__init__",
+      "purpose": "Initialize the account."
+    },
+    {
+      "id": "deposit",
+      "name": "deposit",
+      "purpose": "Accept positive integer cents."
+    },
+    {
+      "id": "withdraw",
+      "name": "withdraw",
+      "purpose": "Withdraw only available positive integer cents."
+    },
+    {
+      "id": "statement",
+      "name": "statement",
+      "purpose": "Return an independent history snapshot."
+    }
+  ],
+  "todos": [
+    {
+      "id": "repair-withdraw",
+      "instructions": "Reject overdrafts without changing state.",
+      "target_function_ids": [
+        "withdraw"
+      ]
+    },
+    {
+      "id": "repair-statement",
+      "instructions": "Return a copy of the transaction history.",
+      "target_function_ids": [
+        "statement"
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "id": "deposit-balance",
+      "test_definition_id": "backend_wallet_deposit_balance",
+      "visibility": "public",
+      "required_for_civilian_win": true,
+      "expected_behavior": "Deposits update balance and history",
+      "target_function_ids": [
+        "init",
+        "deposit"
+      ],
+      "name": "Deposits update balance and history",
+      "public_description": "Deposits update balance and history",
+      "safe_failure_message": "Deposits update balance and history failed."
+    },
+    {
+      "id": "withdraw-bounds",
+      "test_definition_id": "backend_wallet_withdraw_bounds",
+      "visibility": "public",
+      "required_for_civilian_win": true,
+      "expected_behavior": "Withdrawals reject overdrafts",
+      "target_function_ids": [
+        "deposit",
+        "withdraw"
+      ],
+      "name": "Withdrawals reject overdrafts",
+      "public_description": "Withdrawals reject overdrafts",
+      "safe_failure_message": "Withdrawals reject overdrafts failed."
+    },
+    {
+      "id": "statement-copy",
+      "test_definition_id": "backend_wallet_statement_copy",
+      "visibility": "public",
+      "required_for_civilian_win": true,
+      "expected_behavior": "Statements preserve transactions",
+      "target_function_ids": [
+        "deposit",
+        "statement"
+      ],
+      "name": "Statements preserve transactions",
+      "public_description": "Statements preserve transactions",
+      "safe_failure_message": "Statements preserve transactions failed."
+    },
+    {
+      "id": "invalid-amounts",
+      "test_definition_id": "backend_wallet_invalid_amounts",
+      "visibility": "hidden",
+      "required_for_civilian_win": true,
+      "expected_behavior": "Invalid amounts never change state",
+      "target_function_ids": [
+        "deposit",
+        "withdraw",
+        "statement"
+      ]
+    }
+  ],
+  "runtime_policy": "python-standard-v1",
+  "reference_solution": "class Wallet:\n    def __init__(self):\n        self.balance = 0\n        self.history = []\n\n    def deposit(self, amount):\n        if type(amount) is not int or amount <= 0:\n            return False\n        self.balance += amount\n        self.history.append(amount)\n        return True\n\n    def withdraw(self, amount):\n        if type(amount) is not int or amount <= 0 or amount > self.balance:\n            return False\n        self.balance -= amount\n        self.history.append(-amount)\n        return True\n\n    def statement(self):\n        return list(self.history)\n",
+  "sabotage_objectives": [
+    {
+      "id": "regress-withdraw",
+      "private_description": "After withdraw-bounds passes, introduce a subtle logic error only inside withdraw. Keep the verified revision unchanged until the round deadline.",
+      "target_function_ids": [
+        "withdraw"
+      ],
+      "target_test_ids": [
+        "withdraw-bounds"
+      ],
+      "verification": {
+        "kind": "test_regression",
+        "test_id": "withdraw-bounds"
+      },
+      "progress_policy": "verified_once",
+      "completion_effect": "record_completion",
+      "fairness_notes": "Server checks author history, target-only syntax changes and bounded assertion failures. Credit costs one of three match credits with a 45-second cooldown. At least 30 seconds must remain; any subsequent edit clears current verification. Victory is checked at the round deadline."
+    }
+  ],
+  "authorship": {
+    "authored_by": "Bugsy project team",
+    "created_at": "2026-10-27",
+    "review_status": "draft"
+  }
+}

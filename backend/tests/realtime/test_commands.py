@@ -38,6 +38,17 @@ class CommandTests(unittest.TestCase):
         self.assertEqual(socket.sent[1]["code"], "INVALID_MESSAGE")
         self.assertEqual(repository.receipts, {})
 
+    def test_maintenance_mode_blocks_new_match_start(self) -> None:
+        repository = FakeRepository()
+        socket = FakeSocket([text_frame(command("pause-1", {"name": "start_match"})), DISCONNECT],
+                            service=FakeService(repository.stored.state))
+        socket.app.state.room_coordinator = RoomCoordinator(
+            repository, socket.manager, accept_new_matches=False,
+        )
+        run_socket(room_websocket(socket))
+        self.assertEqual(socket.sent[1]["code"], "NEW_MATCHES_PAUSED")
+        self.assertEqual(repository.stored.state.phase, GamePhase.LOBBY)
+
     def test_valid_command_in_wrong_phase_is_rejected_without_state_change(self) -> None:
         room = replace(
             make_room(), phase=GamePhase.CATEGORY_VOTE, match=MatchState(),

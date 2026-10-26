@@ -108,6 +108,9 @@ MAX_OFFICIAL_TEST_HISTORY = 32
 MAX_TEST_PASS_EVIDENCE = 256
 MAX_ROUND_HISTORY = 3
 MAX_CHAT_MESSAGES = 100
+MAX_SABOTAGE_CREDITS = 3
+SABOTAGE_COOLDOWN_SECONDS = 45
+SABOTAGE_RESPONSE_SECONDS = 30
 
 
 def _require_non_blank(value: str, field_name: str) -> None:
@@ -448,8 +451,14 @@ class MatchState:
     paused_round_deadline: GameDeadline | None = None
     meeting_cooldown_until: datetime | None = None
     rematch_requests: tuple[str, ...] = ()
+    sabotage_credits_used: int = 0
+    sabotage_cooldown_until: datetime | None = None
 
     def __post_init__(self) -> None:
+        if type(self.sabotage_credits_used) is not int or not 0 <= self.sabotage_credits_used <= MAX_SABOTAGE_CREDITS:
+            raise ValueError("sabotage credits exceed the match budget")
+        if self.sabotage_cooldown_until is not None:
+            _require_utc_datetime(self.sabotage_cooldown_until, "sabotage_cooldown_until")
         if self.match_id is not None:
             _require_non_blank(self.match_id, "match_id")
             if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}", self.match_id) is None:

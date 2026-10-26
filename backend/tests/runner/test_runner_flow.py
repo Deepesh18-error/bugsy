@@ -13,10 +13,10 @@ from pydantic import ValidationError
 
 from app.api.schemas import build_room_response
 from app.game.commands import RequestOfficialTestRun
-from app.game.models import GamePhase, MatchEndReason, OfficialRunStatus, SabotageObjectiveProgress, TestPassEvidence
+from app.game.models import GamePhase, MatchEndReason, OfficialRunStatus, OfficialTestResult, SabotageObjectiveProgress, TestPassEvidence
 from app.game.outcomes import TransitionAccepted
 from app.game.transitions import record_official_run_status
-from app.rooms.repository import StoredRoom
+from app.rooms.repository import StoredRoom, EditorDocument, EditorRevision
 from app.rooms.serialization import serialize_room
 from app.runner.contracts import (
     MAX_JOB_BYTES, RunnerResult, RunnerStatus, RunnerTestResult,
@@ -211,7 +211,7 @@ class RunnerFlowTests(unittest.TestCase):
         self.assertIn("decrement", impostor.own_objectives[0].private_description)
         self.assertNotIn("private_description", civilian.model_dump_json())
 
-    def test_signed_regression_verifies_private_objective(self):
+    def test_unattributed_signed_regression_never_verifies_private_objective(self):
         state = self.rooms.stored.state
         objective = LOADED.challenge.sabotage_objectives[0]
         earlier_pass = TestPassEvidence(
@@ -230,13 +230,9 @@ class RunnerFlowTests(unittest.TestCase):
         processor = RunnerResultProcessor(self.rooms, self.runner, self.connections, signing_key=KEY)
         self.assertTrue(run_immediate(processor.process(result)))
         final = self.rooms.stored.state
-        self.assertEqual(final.phase, GamePhase.GAME_OVER)
-        self.assertEqual(final.match.result.reason, MatchEndReason.SABOTAGE_OBJECTIVES_COMPLETED)
-        objective_events = [event for _, _, event in self.connections.private
-                            if event.name == "SabotageObjectiveVerified"]
-        self.assertEqual(len(objective_events), 1)
-        self.assertFalse(any(event.name == "SabotageObjectiveVerified"
-                             for _, event in self.connections.public))
+        self.assertEqual(final.phase, GamePhase.CODING_ROUND)
+        self.assertIsNone(final.match.result)
+        self.assertFalse(self.connections.private)
 
     def test_wire_result_rejects_coerced_pass_values(self):
         with self.assertRaises(ValidationError):

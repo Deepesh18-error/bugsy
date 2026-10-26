@@ -6,7 +6,7 @@ import TestResults from '../components/TestResults.jsx';
 import SabotageObjectives from '../components/SabotageObjectives.jsx';
 import { loadEditorHistory, loadEditorSession, restoreEditorRevision } from '../api/editor.js';
 import { loadPublicFeedbackBundle, requestOfficialTestRun } from '../api/codeFeedback.js';
-import useCodeFeedback from '../hooks/useCodeFeedback.js';
+import useCodeFeedback, { BROWSER_FEEDBACK_ENABLED } from '../hooks/useCodeFeedback.js';
 import useCollaborativeEditor from '../hooks/useCollaborativeEditor.js';
 import styles from '../styles/ArenaScreen.module.css';
 
@@ -24,7 +24,7 @@ function formatTime(seconds) {
 export default function LiveArena({ room, role, categoryName, roundNumber, totalRounds,
   deadlineAt, revisionId, connectionStatus, officialEvent, officialSnapshot, officialRuns,
   runStatusEvent,
-  ownObjectives = [], ownMeetingsUsed = 0, meetingCooldownUntil = null,
+  ownObjectives = [], sabotageCredits = null, sabotageCooldownUntil = null, ownMeetingsUsed = 0, meetingCooldownUntil = null,
   chatMessages = [], onSendChat, canSendChat = false,
   sendCommand, requestSnapshot }) {
   const [session, setSession] = useState(null);
@@ -61,7 +61,8 @@ export default function LiveArena({ room, role, categoryName, roundNumber, total
   const editor = useCollaborativeEditor(session, participant,
     Boolean(session) && connectionStatus === 'connected');
   const { feedback: provisional, run: runProvisional } = useCodeFeedback(
-    `${room.code}:${roundNumber}`, source, feedbackBundle?.tests,
+    `${room.code}:${roundNumber}`, source,
+    BROWSER_FEEDBACK_ENABLED ? feedbackBundle?.tests : null,
   );
 
   useEffect(() => {
@@ -284,8 +285,11 @@ export default function LiveArena({ room, role, categoryName, roundNumber, total
             <span className={`${styles.roleDot} ${role === 'impostor' ? styles.impostorDot : ''}`} aria-hidden="true" />
             <div><p className={styles.eyebrow}>YOUR ROLE</p><strong>{role === 'impostor' ? 'Impostor' : role === 'civilian' ? 'Civilian' : 'Waiting for role…'}</strong></div>
           </section>
-          {role === 'impostor' && <SabotageObjectives objectives={ownObjectives} />}
+          {role === 'impostor' && <SabotageObjectives objectives={ownObjectives} credits={sabotageCredits}
+            cooldownSeconds={timeLeft(sabotageCooldownUntil)} />}
+          <p className={styles.challengeSummary}>Sabotage can win only at the round deadline, after at least 30 seconds to respond. Editing or restoring the code clears its current verification. Repair and rerun tests, or call a meeting.</p>
           <TestResults bundle={feedbackBundle} bundleError={bundleError}
+            browserFeedbackEnabled={BROWSER_FEEDBACK_ENABLED}
             provisional={provisional} official={displayedOfficialResult}
             officialStatus={officialStatus} officialError={officialError}
             revisionId={revisionId}

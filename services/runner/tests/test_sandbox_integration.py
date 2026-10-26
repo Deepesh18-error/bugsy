@@ -8,8 +8,8 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from challenges.registry import COUNTER, ChallengeSpec
-from contracts import TestFailureKind
+from challenges.registry import COUNTER, COUNTER_1_1, STACK, WALLET, ChallengeSpec, resolve_job
+from contracts import TestFailureKind, TestCase
 from executor import JAIL_BINARY, RunnerExecutor
 from test_contract_and_parser import job
 
@@ -51,6 +51,23 @@ class SandboxIntegrationTests(unittest.TestCase):
         return self.count
 """
         self.assertTrue(all(result.passed for result in self.run_cases(source, all_tests=True)))
+
+    def test_all_authored_references_pass_in_the_real_jail(self):
+        async def execute(spec):
+            source = (Path(__file__).parent / "fixtures" / (spec.challenge_id.replace(".", "_") + ".py")).read_text()
+            pinned = job(source=source).model_copy(update={
+                "challenge_id": spec.challenge_id, "challenge_version": spec.version,
+                "challenge_content_digest": spec.content_digest,
+                "tests": tuple(TestCase(test_id=t.test_id, test_definition_id=t.definition_id,
+                                        required_for_civilian_win=t.required_for_civilian_win) for t in spec.tests),
+            })
+            self.assertIs(resolve_job(pinned), spec)
+            with tempfile.TemporaryDirectory(dir="/runs") as directory:
+                return await RunnerExecutor(Path(directory)).execute(pinned, spec)
+        for spec in (COUNTER_1_1, STACK, WALLET):
+            with self.subTest(challenge=spec.challenge_id):
+                results = asyncio.run(execute(spec))
+                self.assertTrue(all(result.passed for result in results), results)
 
     def test_runaway_loop_is_bounded(self):
         result = self.run_cases("while True: pass\nclass Counter: pass")[0]

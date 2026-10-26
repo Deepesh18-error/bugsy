@@ -21,6 +21,7 @@ from app.game.idempotency import command_fingerprint, durable_receipt_is_live
 from app.game.models import ConnectionStatus, DeadlineKind, GameDeadline, GamePhase, OfficialRunStatus
 from app.game.outcomes import RejectionCode, TransitionAccepted, TransitionRejected
 from app.game.randomness import ChoiceSource, SecureChoiceSource
+from app.observability import OperationalMetrics
 from app.game.transitions import (
     apply_command, expire_reconnect_grace, mark_player_disconnected,
     process_deadline, record_source_revision, record_official_run_status,
@@ -83,6 +84,8 @@ class RoomCoordinator:
         choice_source: ChoiceSource | None = None,
         setup_policy: MatchSetupPolicy | None = None,
         runner_service: RunnerService | None = None,
+        accept_new_matches: bool = True,
+        metrics: OperationalMetrics | None = None,
         automatic_test_debounce_seconds: float = 1.0,
         reconnect_grace_seconds: int = 60,
     ) -> None:
@@ -98,6 +101,8 @@ class RoomCoordinator:
         self._choices = choice_source or SecureChoiceSource()
         self._setup_policy = setup_policy or MatchSetupPolicy()
         self._runner_service = runner_service
+        self._accept_new_matches = accept_new_matches
+        self._metrics = metrics
         self._automatic_test_debounce_seconds = automatic_test_debounce_seconds
         if type(reconnect_grace_seconds) is not int or reconnect_grace_seconds <= 0:
             raise ValueError("Reconnect grace must be a positive number of seconds.")
@@ -232,6 +237,8 @@ class RoomCoordinator:
                     stored, updated, advance_sequence=bool(events),
                 ):
                     continue
+                if self._metrics is not None:
+                    self._metrics.increment("runner_timeout", len(timed_out))
                 await self._publish(room_code, projected)
                 if self._runner_service is not None:
                     for progress in timed_out:
@@ -286,7 +293,10 @@ class RoomCoordinator:
             # Explicit leave remains on the HTTP/session-revocation path. A
             # transport drop is not a leave; meetings are now live commands.
             unavailable = isinstance(command, LeaveRoom)
-            if isinstance(command, StartMatch) and not available_categories(self._setup_policy):
+            if isinstance(command, StartMatch) and not self._accept_new_matches:
+                result = ServerError(code="NEW_MATCHES_PAUSED", message="New matches are temporarily paused.", request_id=message.request_id)
+                updated, events = stored.state, ()
+            elif isinstance(command, StartMatch) and not available_categories(self._setup_policy):
                 result = ServerError(code="CHALLENGE_UNAVAILABLE", message="No challenge is ready for a live match.", request_id=message.request_id)
                 updated, events = stored.state, ()
             elif isinstance(command, CastCategoryVote) and command.category_id not in available_categories(self._setup_policy):
@@ -718,6 +728,8 @@ class RoomCoordinator:
 
         for recipient, event in projected:
             if recipient is None:
+                if self._metrics is not None:
+                    self._metrics.observe_public_event(event.name, event.payload)
                 await self._connections.broadcast(room_code, event)
             else:
                 await self._connections.send_private(room_code, recipient, event)

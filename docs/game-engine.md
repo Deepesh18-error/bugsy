@@ -52,8 +52,7 @@ in any phase. A closed or expired room accepts no new player commands.
   advance another phase. Room expiry takes priority when its timestamp is due.
 - Operations for a room must be committed in one serial order. If civilian
   victory or impostor victory commits first, the phase becomes `GAME_OVER` and
-  the later competing result is rejected. The same holds for ejection versus
-  an objective verdict.
+  the later competing result is rejected. Ejection can interrupt verified sabotage before the coding deadline.
 - Player command retries use `(room_code, player_id, request_id)` with the
   policy in `idempotency.py`: default ten-minute retention and 10,000 cached
   entries. The current store is in memory. Phase 5 must place the store and
@@ -86,3 +85,14 @@ scenarios cover accidental regression, stale runner results, verified
 sabotage, meeting and vote outcomes, deadline races, reconnect grace, room
 expiry, and command retry behavior. These scenarios verify rule decisions;
 they do not exercise FastAPI, WebSockets, Redis, the editor, or the runner.
+
+
+## October 27 rules
+
+Verification records private progress without ending the match. Three credits
+per match, a 45-second cooldown and at least 30 seconds to respond are enforced.
+Objectives verified on the same revision share a credit. Source updates clear
+verification, preserving the budget. Coding deadlines award sabotage victory
+only for all objectives verified on the unchanged revision with a failing
+official result. Storage version 7 persists budget/cooldown fields and accepts
+older stored rooms with defaults.

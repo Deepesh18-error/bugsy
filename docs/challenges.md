@@ -87,11 +87,11 @@ Each objective defines:
 | `private_description` | Instruction visible only to the assigned impostor. |
 | `target_function_ids` and/or `target_test_ids` | Relevant stable challenge IDs; do not identify a target by source line number. |
 | `verification` | A constrained, allow-listed predicate over official runner results and the pinned source revision. Never evaluate an arbitrary expression or code supplied by content or a client. |
-| `progress_policy` | Content rule for how verification evidence is recorded. In the MVP, an objective is recorded once when its allow-listed verifier succeeds on an official result. The live state (not started, in progress, or verified), verified revision, and completion event belong to match state, not this immutable challenge document. The client may display server-provided progress but cannot set it. |
-| `completion_effect` | Per-objective effect. In the MVP, a verified objective records completion against its verified revision; the game engine aggregates the assigned objectives and applies the match win condition when all required objectives are complete. |
+| `progress_policy` | Content rule for how verification evidence is recorded. In the MVP, an objective is recorded once per revision when its verifier succeeds; a later revision resets current progress. The live state (not started, in progress, or verified), verified revision, and completion event belong to match state, not this immutable challenge document. The client may display server-provided progress but cannot set it. |
+| `completion_effect` | Per-objective effect. In the MVP, a verified objective records completion against its verified revision; the game engine aggregates the assigned objectives and checks victory at the coding deadline if all objectives remain verified on the current revision and the 30-second response window was available. |
 | `fairness_notes` | Reviewer explanation of how civilians can notice and recover from the behavior without being told the secret objective. |
 
-Objective completion is verified by the server using pinned challenge definitions and official runner output, never by a client claim. Once an objective is verified, record the verified revision and completion event. A later repair may restore passing tests, but it does not rewrite the historical fact that the objective was completed. The current test state and objective history are separate pieces of match state.
+Objective completion is verified by the server using pinned challenge definitions and official runner output, never by a client claim. Once an objective is verified, record the verified revision and completion event. The private event records historical verification. Every saved edit clears live verification while preserving the spent match credits and cooldown.
 
 The objective should produce observable evidence through code changes, public test behavior, or other already-authorized game feedback. Avoid objectives that require arbitrary disruption, hidden access to another player's client, or information that civilians cannot reasonably discover. If objective completion ends the match, the transition must follow the match's serialized event ordering rules so a previously committed ejection is not overwritten.
 
@@ -128,8 +128,29 @@ Start with the Counter challenge as the schema example. It should include a know
 
 The initial bank is accepted only when every included challenge can be selected by its explicit ID/version, has bounded official tests, has a known correct solution, and supports at least one reviewed sabotage objective.
 
-For the current playable prototype, only the version-pinned OOP Counter challenge is selectable. Four-round matches may reuse it, but each round starts from fresh code, a new document and a new deadline. Add reviewed challenges and trusted runner mappings before enabling other categories. The Counter challenge remains draft and is unavailable in production configuration.
+The selectable development/staging bank contains `oop.counter` 1.1.0,
+`oop.stack` 1.0.0 and `backend.wallet` 1.0.0. Counter 1.0.0 remains pinned for
+compatibility. The first OOP round uses Counter, then prefers unused Stack;
+content repeats only after the category bank is exhausted. The catalog endpoint
+filters by the deployment's draft-content policy. All selectable versions
+remain draft until real nsjail checks and multiplayer review are complete.
+
 
 ## 9. Phase boundary
 
 This contract describes challenge data and review requirements. It does not implement challenge loading APIs, collaborative editing, test execution, sandboxing, objective assignment, or match-state transitions. Those features consume this contract in later phases. The current frontend challenge data remains preview-only until it is deliberately adapted to the approved bank and public/private payload boundary.
+
+
+## Current attribution policy
+
+A passing official baseline must remain in both bounded result history and
+editor history. Every revision after it must come from the impostor after that
+result, without restores or civilian edits. AST comparison preserves everything
+outside target method bodies, including signatures/decorators. Syntax errors,
+runtime failures and timeouts never earn credit. Only tests declared to exercise
+the target functions may newly fail; simultaneous repairs are rejected. Missing
+or pruned provenance fails closed instead of guessing authorship.
+
+One newly verified revision costs one of three match credits, with a 45-second
+cooldown. Verification closes 30 seconds before the round deadline. Victory is
+checked at the deadline; every subsequent edit/restore clears verification.
