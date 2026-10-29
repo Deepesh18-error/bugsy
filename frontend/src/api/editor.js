@@ -87,12 +87,13 @@ export async function loadEditorSession(roomCode, roundNumber) {
     || typeof payload.document_id !== 'string'
     || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,179}$/.test(payload.document_id)
     || !isRecord(challenge)
-    || !hasOnlyKeys(challenge, ['id', 'version', 'category', 'title', 'prompt', 'starter_code'])
+    || !hasOnlyKeys(challenge, ['id', 'version', 'category', 'title', 'prompt', 'language', 'starter_code'])
     || !nonBlank(challenge.id)
     || !nonBlank(challenge.version)
     || !SERVER_CATEGORY_IDS.includes(challenge.category)
     || !nonBlank(challenge.title)
     || !nonBlank(challenge.prompt)
+    || !['python', 'cpp'].includes(challenge.language)
     || !nonBlank(challenge.starter_code)) {
     throw new EditorApiError('INVALID_RESPONSE', 'The editor server returned incompatible challenge data.');
   }
@@ -108,6 +109,7 @@ export async function loadEditorSession(roomCode, roundNumber) {
       category: challenge.category,
       title: challenge.title,
       prompt: challenge.prompt,
+      language: challenge.language,
       starterCode: challenge.starter_code,
     },
   };

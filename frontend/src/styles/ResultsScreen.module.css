@@ -8,6 +8,7 @@
 .roomMeta strong { padding: 8px 10px; border: 1px solid #3d4b4c; border-radius: 7px; color: var(--color-lime); font-size: 0.72rem; font-weight: 600; }
 .content { flex: 1; flex-direction: column; align-items: center; padding-block: 46px 55px; text-align: center; }
 .resultMark { display: grid; width: 60px; height: 60px; place-items: center; border: 1px solid rgb(115 213 179 / 45%); border-radius: 18px; background: rgb(115 213 179 / 8%); color: var(--color-mint); font-size: 1.7rem; }
+.resultCharacter { width: 76px; height: 101px; margin-bottom: 12px; }
 .eyebrow, .panelEyebrow, .footer { font-family: var(--font-mono); letter-spacing: 0.1em; text-transform: uppercase; }
 .eyebrow { margin: 18px 0 10px; color: var(--color-mint); font-size: 0.59rem; font-weight: 700; }
 .matchEyebrow { color: var(--color-lime); }

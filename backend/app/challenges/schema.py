@@ -57,11 +57,12 @@ ChallengeCategory = Literal[
     "security",
     "front-end",
     "back-end",
+    "c-plus-plus",
 ]
 
 TestVisibility = Literal["public", "hidden"]
 ReviewStatus = Literal["draft", "reviewed", "approved"]
-RuntimePolicyId = Literal["python-standard-v1"]
+RuntimePolicyId = Literal["python-standard-v1", "cpp20-standard-v1"]
 
 
 class ChallengeContentModel(BaseModel):
@@ -178,8 +179,8 @@ class Challenge(ChallengeContentModel):
     category: ChallengeCategory
     title: ShortText
     prompt: Description
-    language: Literal["python"]
-    python_version: PythonVersion
+    language: Literal["python", "cpp"]
+    python_version: PythonVersion | None = None
     starter_code: SourceCode
     functions: tuple[ChallengeFunction, ...] = Field(min_length=1)
     todos: tuple[ChallengeTodo, ...] = Field(min_length=1)
@@ -188,6 +189,14 @@ class Challenge(ChallengeContentModel):
     reference_solution: SourceCode
     sabotage_objectives: tuple[SabotageObjective, ...] = Field(min_length=1)
     authorship: ChallengeAuthorship
+
+    @model_validator(mode="after")
+    def validate_language_runtime(self) -> Challenge:
+        if self.language == "python" and (self.python_version is None or self.runtime_policy != "python-standard-v1"):
+            raise ValueError("Python challenges require a Python version and runtime policy")
+        if self.language == "cpp" and (self.python_version is not None or self.runtime_policy != "cpp20-standard-v1"):
+            raise ValueError("C++ challenges require the C++20 runtime policy")
+        return self
 
     @field_validator("starter_code", "reference_solution")
     @classmethod

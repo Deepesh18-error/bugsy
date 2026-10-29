@@ -8,7 +8,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from challenges.registry import COUNTER, COUNTER_1_1, STACK, WALLET, ChallengeSpec, resolve_job
+from challenges.registry import COUNTER, COUNTER_1_1, STACK, WALLET, CPP_SCORE, ChallengeSpec, resolve_job
 from contracts import TestFailureKind, TestCase
 from executor import JAIL_BINARY, RunnerExecutor
 from test_contract_and_parser import job
@@ -68,6 +68,31 @@ class SandboxIntegrationTests(unittest.TestCase):
             with self.subTest(challenge=spec.challenge_id):
                 results = asyncio.run(execute(spec))
                 self.assertTrue(all(result.passed for result in results), results)
+
+    def test_cpp_reference_and_starter_in_the_real_jail(self):
+        async def execute(source):
+            pinned = job(source=source).model_copy(update={
+                "challenge_id": CPP_SCORE.challenge_id,
+                "challenge_version": CPP_SCORE.version,
+                "challenge_content_digest": CPP_SCORE.content_digest,
+                "runtime_policy": CPP_SCORE.runtime_policy,
+                "tests": tuple(TestCase(test_id=t.test_id, test_definition_id=t.definition_id,
+                                        required_for_civilian_win=t.required_for_civilian_win)
+                               for t in CPP_SCORE.tests),
+            })
+            self.assertIs(resolve_job(pinned), CPP_SCORE)
+            with tempfile.TemporaryDirectory(dir="/runs") as directory:
+                return await RunnerExecutor(Path(directory)).execute(pinned, CPP_SCORE)
+
+        reference = (Path(__file__).parent / "fixtures" / "cpp_score.cpp").read_text()
+        correct = asyncio.run(execute(reference))
+        self.assertTrue(all(item.passed for item in correct), correct)
+        starter = reference.replace('return current - points;', 'return current - 1;').replace('return 0;', 'return current;')
+        broken = asyncio.run(execute(starter))
+        self.assertEqual([item.passed for item in broken], [True, False, False, False])
+        malformed = asyncio.run(execute('not valid C++'))
+        self.assertTrue(all(not item.passed and item.failure_kind == TestFailureKind.COMPILE_ERROR
+                            for item in malformed), malformed)
 
     def test_runaway_loop_is_bounded(self):
         result = self.run_cases("while True: pass\nclass Counter: pass")[0]

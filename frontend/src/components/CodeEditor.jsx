@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import * as monaco from 'monaco-editor/editor/editor.api.js';
 import 'monaco-editor/languages/definitions/python/register.js';
+import 'monaco-editor/languages/definitions/cpp/register.js';
 import EditorWorker from 'monaco-editor/editor/editor.worker.js?worker';
 import { MonacoBinding } from 'y-monaco';
 import styles from '../styles/components/CodeEditor.module.css';
@@ -38,6 +39,7 @@ export default function CodeEditor({
   awareness,
   canEdit = false,
   label = 'Shared Python code',
+  language = 'python',
   preferAccessibleEditor = false,
 }) {
   const containerRef = useRef(null);
@@ -59,7 +61,7 @@ export default function CodeEditor({
   useEffect(() => {
     if (!sharedText || preferAccessibleEditor || !containerRef.current) return undefined;
 
-    const model = monaco.editor.createModel(sharedText.toString(), 'python');
+    const model = monaco.editor.createModel(sharedText.toString(), language === 'cpp' ? 'cpp' : 'python');
     const editor = monaco.editor.create(containerRef.current, {
       model,
       theme: 'vs-dark',
@@ -86,7 +88,7 @@ export default function CodeEditor({
       editor.dispose();
       model.dispose();
     };
-  }, [sharedText, awareness, preferAccessibleEditor, label]);
+  }, [sharedText, awareness, preferAccessibleEditor, label, language]);
 
   useEffect(() => {
     editorRef.current?.updateOptions({ readOnly: !canEdit });

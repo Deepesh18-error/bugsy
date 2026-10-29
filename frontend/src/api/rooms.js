@@ -1,4 +1,5 @@
 import { API_BASE_URL } from './baseUrl.js';
+import { CHARACTER_IDS, DEFAULT_CHARACTER_ID } from '../data/characters.js';
 
 export function roomWebSocketUrl() {
   const url = new URL(`${API_BASE_URL}/api/rooms/ws`);
@@ -12,7 +13,7 @@ export function roomWebSocketUrl() {
 export const ROOM_CODE_LENGTH = 8;
 export const ROOM_CODE_CHARACTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 export const SERVER_CATEGORY_IDS = Object.freeze([
-  'data-structures-algorithms', 'object-oriented', 'security', 'front-end', 'back-end',
+  'data-structures-algorithms', 'object-oriented', 'security', 'front-end', 'back-end', 'c-plus-plus',
 ]);
 
 export class RoomApiError extends Error {
@@ -47,7 +48,7 @@ export function requireRoomSnapshot(snapshot) {
     'challenge_id', 'challenge_version', 'current_source_revision_id',
     'official_result', 'official_runs', 'match_result', 'last_vote_result', 'players',
   ];
-  const playerKeys = ['player_id', 'display_name', 'connection', 'is_ready', 'is_alive', 'is_host'];
+  const playerKeys = ['player_id', 'display_name', 'avatar_id', 'connection', 'is_ready', 'is_alive', 'is_host'];
   const objectiveKeys = ['objective_id', 'status', 'private_description'];
   const matchResultKeys = ['winner', 'reason', 'round_number'];
   const voteResultKeys = ['vote_counts', 'skip_count', 'ejected_player_id', 'was_tie', 'resolved_at'];
@@ -145,6 +146,7 @@ export function requireRoomSnapshot(snapshot) {
       && hasOnlyKeys(player, playerKeys)
       && typeof player.player_id === 'string'
       && typeof player.display_name === 'string'
+      && (player.avatar_id === undefined || CHARACTER_IDS.has(player.avatar_id))
       && ['connected', 'disconnected', 'departed'].includes(player.connection)
       && typeof player.is_ready === 'boolean'
       && typeof player.is_alive === 'boolean'
@@ -190,12 +192,12 @@ async function request(path, options = {}) {
   return requireRoomSnapshot(payload?.room);
 }
 
-export function createRoom(displayName) {
-  return request('', { body: { display_name: displayName, capacity: 5 } });
+export function createRoom(displayName, avatarId = DEFAULT_CHARACTER_ID) {
+  return request('', { body: { display_name: displayName, avatar_id: avatarId, capacity: 5 } });
 }
 
-export function joinRoom(displayName, roomCode) {
-  return request('/join', { body: { display_name: displayName, room_code: roomCode } });
+export function joinRoom(displayName, roomCode, avatarId = DEFAULT_CHARACTER_ID) {
+  return request('/join', { body: { display_name: displayName, room_code: roomCode, avatar_id: avatarId } });
 }
 
 export function resumeRoom() {
@@ -218,6 +220,7 @@ export function toLobbyView(snapshot) {
     players: snapshot.players.map((player, index) => ({
       id: player.player_id,
       name: player.display_name,
+      avatarId: player.avatar_id || DEFAULT_CHARACTER_ID,
       isYou: player.player_id === snapshot.self_player_id,
       isHost: player.is_host,
       isConnected: player.connection === 'connected',

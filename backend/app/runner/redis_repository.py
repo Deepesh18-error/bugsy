@@ -187,7 +187,7 @@ class RedisRunnerRepository:
             raise RunnerStorageError("Cannot initialize runner result stream.") from exc
 
     async def read_results(
-        self, *, group: str, consumer: str, count: int = 20, block_ms: int = 5_000
+        self, *, group: str, consumer: str, count: int = 20, block_ms: int = 1_000
     ) -> tuple[tuple[str, bytes], ...]:
         try:
             streams = await self._client.xreadgroup(

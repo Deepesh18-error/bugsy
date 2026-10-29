@@ -23,7 +23,7 @@ class RunnerResultWorker:
         group: str = RESULT_GROUP,
         consumer: str | None = None,
         batch_size: int = 20,
-        block_ms: int = 5_000,
+        block_ms: int = 1_000,
         claim_idle_ms: int = 30_000,
     ) -> None:
         if batch_size < 1 or block_ms < 0 or claim_idle_ms < 1:

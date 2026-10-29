@@ -2,8 +2,10 @@
 
 > Planning document and local setup guide. The React preview and the FastAPI,
 > Redis, Yjs, and runner integrations are implemented through Phase 13. The
-> **live four-player journey and Linux runner isolation are not yet validated**
-> on this Windows workspace. Production match start is blocked until the authored
+> The four-player lobby, readiness and chat were manually exercised locally;
+> the full live match remains to be validated by players. The local Docker
+> runner passes its Python and C++ isolation checks.
+> Production match start is blocked until the authored
 > challenge bank has passed its release review. See [quality](docs/quality.md),
 > [release checklist](docs/release-checklist.md), and
 > [deployment review](docs/deployment.md).
@@ -51,15 +53,33 @@ In another PowerShell window:
 ```powershell
 cd frontend
 npm ci
-npm run dev -- --host 127.0.0.1
+npm run dev
 ```
 
 Vite prints the local URL after startup. A separate local match preview is
 available from the welcome screen. A live room needs Redis, FastAPI, and the
-editor service; official Python tests also need the isolated runner and a
+editor service; official Python and C++ tests also need the isolated runner and a
 shared signing key. See [quality](docs/quality.md) for service and test commands.
 `frontend/.env.example` records the API base URL; use the same hostname for
 Vite and FastAPI during local development so the guest cookie works.
+
+### Test a C++ match locally
+
+With `infra/.env` configured for development and draft content, rebuild and
+start the runner from the repository root:
+
+```powershell
+docker compose -f infra/compose.yaml --env-file infra/.env --profile editor --profile runner up -d --build
+```
+
+Keep the backend and frontend running, open four separate browser sessions,
+and have each player vote for **C++**. The shared `challenge.cpp` asks players
+to repair `subtract_score` and `reset_score`. Use **Run official tests** to
+check the saved revision; C++ has no browser-side Python check. A repaired
+revision can be finalized by a civilian. The impostor can test a regression
+inside `subtract_score` after a passing baseline and try to keep that revision
+until the round deadline. C++ compilation and execution happen in separate
+bounded, networkless runner jails; neither requires a C++ compiler on Windows.
 
 ### Dependency maintenance
 
@@ -131,7 +151,7 @@ These defaults make the rules implementable. Lock them in or edit them during Ph
 7. **Player vote:** one vote per eligible living player; allow skip. A tie or all-skip/no-vote yields no ejection. Do not reveal individual ballots before the vote closes. Show only the result needed for deduction after resolution.
 8. **Disconnects:** retain a disconnected player for a short reconnect grace window. They cannot issue actions while offline. At the deadline, their missing vote counts as abstention. After grace, mark them departed and remove meeting/ready eligibility. On reconnect, restore their own role privately and send the current public snapshot.
 9. **Host:** host can start when requirements are met and can end the room. If host leaves, transfer host to the oldest connected player. A room with no active players expires.
-10. **Content:** Python only; live development/staging offers object-oriented and back-end challenges. Other categories remain preview-only until authored. No accounts, ranked matchmaking, public room browser, voice chat, or user-generated challenge builder in the first release.
+10. **Content:** Live development/staging offers Python object-oriented and back-end challenges plus a C++ score challenge. Other categories remain preview-only until authored. No accounts, ranked matchmaking, public room browser, voice chat, or user-generated challenge builder in the first release.
 
 ## 4. Architecture and boundaries
 

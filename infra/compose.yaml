@@ -7,12 +7,16 @@ services:
     cap_drop: ["ALL"]
     security_opt:
       - no-new-privileges:true
+      # Local Docker testing: nsjail must create nested Linux namespaces.
+      # Submitted programs still receive the seccomp policy in sandbox/nsjail.cfg.
+      - seccomp=unconfined
     pids_limit: 64
-    mem_limit: 768m
+    mem_limit: 1024m
     cpus: 2
     stop_grace_period: 35s
     tmpfs:
-      - /runs:size=64m,mode=0700,uid=10001,gid=10001
+      # C++ binaries are created here and executed only by the separate runtime jail.
+      - /runs:size=64m,mode=0700,uid=10001,gid=10001,exec
     environment:
       REDIS_URL: redis://redis:6379/0
       CODEMAFIA_RUNNER_RESULT_HMAC_KEY: ${CODEMAFIA_RUNNER_RESULT_HMAC_KEY:-}

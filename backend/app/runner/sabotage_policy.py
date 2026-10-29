@@ -9,6 +9,7 @@ official tests independently establish bounded behavioral damage.
 from __future__ import annotations
 
 import ast
+import re
 
 from app.challenges.schema import Challenge, SabotageObjective
 from app.game.models import PlayerRole, RoomState
@@ -27,6 +28,74 @@ def _shape(source: str, targets: set[str]) -> tuple[str, tuple[tuple[str, str], 
     if len(found) != len(targets) or {name for name, _ in found} != targets:
         return None
     return ast.dump(tree, include_attributes=False), tuple(sorted(found))
+
+
+def _cpp_shape(source: str, targets: set[str]) -> tuple[str, tuple[tuple[str, str], ...]] | None:
+    """Compare C++ function bodies without executing or trusting submitted code.
+
+    A conservative lexical scan fails closed on unclear syntax; tests decide
+    behavior independently. Only bodies of exact declared functions may differ.
+    """
+    masked = list(source)
+    i = 0
+    while i < len(source):
+        if source.startswith("//", i):
+            end = source.find("\n", i)
+            end = len(source) if end < 0 else end
+        elif source.startswith("/*", i):
+            close = source.find("*/", i + 2)
+            if close < 0:
+                return None
+            end = close + 2
+        elif source[i] in {'"', "'"}:
+            quote = source[i]
+            end = i + 1
+            while end < len(source):
+                if source[end] == "\\":
+                    end += 2
+                elif source[end] == quote:
+                    end += 1
+                    break
+                else:
+                    end += 1
+            if end > len(source) or source[end - 1] != quote:
+                return None
+        else:
+            i += 1
+            continue
+        for position in range(i, end):
+            if masked[position] != "\n":
+                masked[position] = " "
+        i = end
+    visible = "".join(masked)
+    spans = []
+    for name in targets:
+        pattern = rf"\bint\s+{re.escape(name)}\s*\([^{{}};]*\)\s*\{{"
+        matches = list(re.finditer(pattern, visible))
+        if len(matches) != 1:
+            return None
+        start = matches[0].end() - 1
+        depth = 0
+        end = -1
+        for position in range(start, len(visible)):
+            if visible[position] == "{":
+                depth += 1
+            elif visible[position] == "}":
+                depth -= 1
+                if depth == 0:
+                    end = position + 1
+                    break
+        if end < 0:
+            return None
+        spans.append((start, end, name))
+    spans.sort()
+    if any(left[1] > right[0] for left, right in zip(spans, spans[1:])):
+        return None
+    shape = source
+    for start, end, _ in reversed(spans):
+        shape = shape[:start] + "{}" + shape[end:]
+    bodies = tuple(sorted((name, source[start:end]) for start, end, name in spans))
+    return shape, bodies
 
 
 def attributable_regression(
@@ -73,8 +142,9 @@ def attributable_regression(
         if not passed <= set(baseline.passed_test_ids):
             continue
         try:
-            before = _shape(history[index].source, names)
-            after = _shape(document.source, names)
+            shape = _cpp_shape if challenge.language == "cpp" else _shape
+            before = shape(history[index].source, names)
+            after = shape(document.source, names)
         except (SyntaxError, ValueError, RecursionError):
             continue
         if before and after and before[0] == after[0] and before[1] != after[1]:

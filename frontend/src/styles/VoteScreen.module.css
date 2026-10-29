@@ -25,6 +25,7 @@
 .candidate.selected { border-color: var(--color-mint); background: rgb(115 213 179 / 8%); box-shadow: inset 3px 0 var(--color-mint); }
 .candidateNumber { width: 24px; color: #82918b; font-family: var(--font-mono); font-size: 0.58rem; }
 .avatar { display: grid; width: 32px; height: 32px; flex: 0 0 auto; place-items: center; border-radius: 8px; background: #34434a; color: #eee; font-family: var(--font-mono); font-size: 0.7rem; font-weight: 700; }
+.characterAvatar { width: 36px; height: 48px; margin-block: -7px; }
 .violet { color: #c4a6ff; background: rgb(173 139 255 / 17%); }
 .mint { color: #73d5b3; background: rgb(115 213 179 / 17%); }
 .gold { color: #e7c46f; background: rgb(231 196 111 / 17%); }

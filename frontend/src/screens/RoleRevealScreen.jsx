@@ -1,4 +1,5 @@
 import styles from '../styles/RoleRevealScreen.module.css';
+import CharacterSprite from '../components/CharacterSprite.jsx';
 
 const ROLE_DETAILS = {
   civilian: {
@@ -27,6 +28,7 @@ const ROLE_DETAILS = {
 
 export default function RoleRevealScreen({
   displayName,
+  avatarId,
   role,
   category,
   roomCode,
@@ -61,6 +63,7 @@ export default function RoleRevealScreen({
           </p>
 
           <section className={styles.roleCard} aria-labelledby="role-title">
+            {avatarId && <CharacterSprite className={styles.roleCharacter} decorative id={avatarId} state="selected" />}
             {roleDetails ? (
               <>
                 <div className={styles.roleSymbol} aria-hidden="true">

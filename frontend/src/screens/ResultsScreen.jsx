@@ -1,8 +1,11 @@
 import styles from '../styles/ResultsScreen.module.css';
 import StatusMessage from '../components/StatusMessage.jsx';
+import CharacterSprite from '../components/CharacterSprite.jsx';
 
 export default function ResultsScreen({
   roomCode,
+  avatarId,
+  characterResultState = 'ready',
   roundNumber,
   totalRounds,
   result,
@@ -33,6 +36,7 @@ export default function ResultsScreen({
         </header>
 
         <section className={styles.content} id="results" aria-labelledby="results-title">
+          {avatarId && <CharacterSprite className={styles.resultCharacter} decorative id={avatarId} state={characterResultState} />}
           <div className={styles.resultMark} aria-hidden="true">
             {isMatchResult ? '★' : '↗'}
           </div>

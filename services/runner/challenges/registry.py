@@ -8,6 +8,7 @@ from typing import Awaitable, Callable
 from contracts import RunnerJob
 from . import oop_counter_v1 as counter
 from . import collections_v1 as collections
+from . import cpp_score_v1 as cpp_score
 
 
 TestFunction = Callable[[counter.CounterSession], Awaitable[None]]
@@ -86,8 +87,20 @@ WALLET = ChallengeSpec(
     ),
 )
 
+CPP_SCORE = ChallengeSpec(
+    challenge_id="cpp.score", version="1.0.0",
+    content_digest="sha256:7c5564b774a9724592dbde6352e4c9200847a2df66675613aecc141f80828029",
+    runtime_policy="cpp20-standard-v1",
+    tests=(
+        TrustedTest("add-points", "cpp_add_points", True, cpp_score.cpp_add_points),
+        TrustedTest("subtract-points", "cpp_subtract_points", True, cpp_score.cpp_subtract_points),
+        TrustedTest("reset-score", "cpp_reset_score", True, cpp_score.cpp_reset_score),
+        TrustedTest("score-sequence", "cpp_score_sequence", True, cpp_score.cpp_score_sequence),
+    ),
+)
+
 _REGISTRY = {(spec.challenge_id, spec.version, spec.content_digest): spec
-             for spec in (COUNTER, COUNTER_1_1, STACK, WALLET)}
+             for spec in (COUNTER, COUNTER_1_1, STACK, WALLET, CPP_SCORE)}
 
 
 def resolve_job(job: RunnerJob) -> ChallengeSpec:

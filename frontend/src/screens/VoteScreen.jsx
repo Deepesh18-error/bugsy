@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import StatusMessage from '../components/StatusMessage.jsx';
 import styles from '../styles/VoteScreen.module.css';
 import { SKIP_VOTE } from '../data/mockMatch.js';
+import CharacterSprite from '../components/CharacterSprite.jsx';
 
 export default function VoteScreen({
   room,
@@ -92,9 +93,9 @@ export default function VoteScreen({
                       type="button"
                     >
                       <span className={styles.candidateNumber}>{String(index + 1).padStart(2, '0')}</span>
-                      <span className={`${styles.avatar} ${styles[player.tone] ?? ''}`} aria-hidden="true">
-                        {player.name.slice(0, 1).toUpperCase()}
-                      </span>
+                      {player.avatarId
+                        ? <CharacterSprite className={styles.characterAvatar} decorative id={player.avatarId} state="meeting" />
+                        : <span className={`${styles.avatar} ${styles[player.tone] ?? ''}`} aria-hidden="true">{player.name.slice(0, 1).toUpperCase()}</span>}
                       <span className={styles.candidateName}>{player.name}</span>
                       <span className={styles.selectionMark} aria-hidden="true">{isSelected ? '✓' : '○'}</span>
                     </button>

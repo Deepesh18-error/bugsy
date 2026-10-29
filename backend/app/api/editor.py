@@ -110,7 +110,8 @@ async def editor_session(payload: SessionRequest, request: Request):
             "websocket_url": request.app.state.editor_websocket_url,
             "challenge": {"id": challenge.id, "version": challenge.version,
                           "category": challenge.category, "title": challenge.title,
-                          "prompt": challenge.prompt, "starter_code": challenge.starter_code},
+                          "prompt": challenge.prompt, "language": challenge.language,
+                          "starter_code": challenge.starter_code},
         }, headers={"Cache-Control": "no-store"})
     except RoomServiceError as exc:
         return _error(exc.code, exc.message, exc.status_code)

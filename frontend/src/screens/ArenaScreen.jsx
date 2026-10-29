@@ -180,9 +180,9 @@ function PreviewArena({
           <div className={styles.editorHeader}>
             <div>
               <p className={styles.eyebrow}>SHARED WORKSPACE · PREVIEW</p>
-              <h2 id="editor-title">challenge.py</h2>
+              <h2 id="editor-title">{categoryId === 'c-plus-plus' ? 'challenge.cpp' : 'challenge.py'}</h2>
             </div>
-            <span className={styles.languageBadge}>PYTHON</span>
+            <span className={styles.languageBadge}>{categoryId === 'c-plus-plus' ? 'C++20' : 'PYTHON'}</span>
           </div>
           <label className={styles.editorLabel} htmlFor="code-editor">
             Code editor placeholder. Edit the sample text; it is not shared with other players.
@@ -199,7 +199,7 @@ function PreviewArena({
             <span><span className={styles.statusDot} aria-hidden="true" /> Local draft</span>
             <span>{code.split('\n').length} lines</span>
           </div>
-          <p className={styles.editorNote}>Collaborative editing and real Python execution arrive in later phases.</p>
+          <p className={styles.editorNote}>This preview is local only. Create a live room for shared editing and official checks.</p>
         </section>
 
         <aside className={styles.sideColumn} aria-label="Players and chat">
@@ -213,7 +213,7 @@ function PreviewArena({
             </div>
             <ul className={styles.playerList}>
               {room.players.map((player) => (
-                <PlayerCard className={styles.playerRow} key={player.id} player={player} variant="compact" />
+                <PlayerCard className={styles.playerRow} key={player.id} player={player} spriteState="coding" variant="compact" />
               ))}
             </ul>
           </section>

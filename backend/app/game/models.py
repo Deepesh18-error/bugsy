@@ -130,6 +130,7 @@ class PlayerState:
     player_id: str
     display_name: str
     joined_at: datetime
+    avatar_id: str = "linux-builder"
     connection: ConnectionStatus = ConnectionStatus.CONNECTED
     is_ready: bool = False
     is_alive: bool = True
@@ -140,6 +141,8 @@ class PlayerState:
     def __post_init__(self) -> None:
         _require_non_blank(self.player_id, "player_id")
         _require_non_blank(self.display_name, "display_name")
+        from app.rooms.avatars import validate_avatar_id
+        validate_avatar_id(self.avatar_id)
         _require_utc_datetime(self.joined_at, "joined_at")
         if not isinstance(self.connection, ConnectionStatus):
             raise ValueError("connection must be a ConnectionStatus")

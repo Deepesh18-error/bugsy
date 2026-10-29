@@ -122,6 +122,7 @@ collection is part of the current game path.
 
 - Production challenge catalog is empty until editorial approval. Staging
   playtests need the explicit draft-content setting.
-- Full four-player online journey and Linux runner isolation are unverified.
+- Full four-player online journey and runner isolation on the chosen deployment
+  host are unverified. The local Docker Desktop jail checks passed on 2026-10-28.
 - Actual hosting, proxy configuration, WebSocket lifetime, metrics dashboard,
   and rollback drill remain to be completed on the chosen host.

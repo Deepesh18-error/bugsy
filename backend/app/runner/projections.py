@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from app.challenges.schema import Challenge
-from app.runner.contracts import RunnerResult, RunnerStatus
+from app.runner.contracts import RunnerResult, RunnerStatus, TestFailureKind
 
 
 def player_safe_result_payload(challenge: Challenge, result: RunnerResult) -> dict[str, object]:
@@ -18,6 +18,9 @@ def player_safe_result_payload(challenge: Challenge, result: RunnerResult) -> di
             "tests": [],
         }
     outcomes = {item.test_id: item.passed for item in result.tests}
+    compile_error = challenge.language == "cpp" and any(
+        item.failure_kind is TestFailureKind.COMPILE_ERROR for item in result.tests
+    )
     public_tests = []
     for test in challenge.tests:
         if test.visibility != "public":
@@ -28,7 +31,10 @@ def player_safe_result_payload(challenge: Challenge, result: RunnerResult) -> di
             "name": test.name,
             "passed": passed,
             "required_for_civilian_win": test.required_for_civilian_win,
-            "message": None if passed else test.safe_failure_message,
+            "message": None if passed else (
+                "C++ did not compile. Check syntax and the required function names and parameters."
+                if compile_error else test.safe_failure_message
+            ),
         })
     return {
         "run_id": result.run_id,

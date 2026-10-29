@@ -28,6 +28,25 @@ describe('live screen actions', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('Room codes are 8 characters long.');
   });
 
+  it('sends the selected character when creating a room', async () => {
+    const create = vi.fn().mockResolvedValue(undefined);
+    render(<WelcomeScreen onCreateRoom={create} onJoinRoom={vi.fn()} onPreview={vi.fn()} />);
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText('Your player name'), 'Ada');
+    await user.click(screen.getByRole('radio', { name: 'Apollo Coder' }));
+    await user.click(screen.getByRole('button', { name: /Create a room/ }));
+    expect(create).toHaveBeenCalledWith('Ada', 'apollo-coder');
+  });
+
+  it('shows a concise inspiration credit on hover and keeps the chosen credit visible', async () => {
+    render(<WelcomeScreen onCreateRoom={vi.fn()} onJoinRoom={vi.fn()} onPreview={vi.fn()} />);
+    const user = userEvent.setup();
+    await user.hover(screen.getByText('Apollo Coder'));
+    expect(document.getElementById('character-credit')).toHaveTextContent('Margaret Hamilton · Led Apollo flight software');
+    await user.unhover(screen.getByText('Apollo Coder'));
+    expect(document.getElementById('character-credit')).toHaveTextContent('Linus Torvalds · Created Linux and Git');
+  });
+
   it('permits a connected ready host to start, then disables start while disconnected', async () => {
     const onStart = vi.fn();
     const { rerender } = render(<LobbyScreen room={room} isLive connectionStatus="connected"

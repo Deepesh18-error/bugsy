@@ -20,7 +20,7 @@ class CatalogTests(unittest.TestCase):
     def test_draft_bank_is_playable_only_when_explicitly_allowed(self):
         self.assertEqual(available_categories(MatchSetupPolicy(allow_draft_content=False)), ())
         self.assertEqual(available_categories(MatchSetupPolicy(allow_draft_content=True)),
-                         ('object-oriented', 'back-end'))
+                         ('object-oriented', 'back-end', 'c-plus-plus'))
 
     def test_next_round_uses_an_unused_challenge_with_fresh_document(self):
         now = datetime.now(timezone.utc)

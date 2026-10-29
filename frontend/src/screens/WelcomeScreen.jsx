@@ -1,11 +1,15 @@
 import { useRef, useState } from 'react';
 import { ROOM_CODE_CHARACTERS, ROOM_CODE_LENGTH } from '../api/rooms.js';
+import { CHARACTERS, DEFAULT_CHARACTER_ID, getCharacter } from '../data/characters.js';
+import CharacterSprite from '../components/CharacterSprite.jsx';
 import styles from '../styles/WelcomeScreen.module.css';
 
 const MAX_NAME_LENGTH = 24;
 
 export default function WelcomeScreen({ onCreateRoom, onJoinRoom, onPreview, restoreError, onRetryResume, canRetryResume = true, isRestoring }) {
   const [displayName, setDisplayName] = useState('');
+  const [avatarId, setAvatarId] = useState(DEFAULT_CHARACTER_ID);
+  const [inspectedAvatarId, setInspectedAvatarId] = useState(null);
   const [roomCode, setRoomCode] = useState('');
   const [nameError, setNameError] = useState('');
   const [joinError, setJoinError] = useState('');
@@ -48,8 +52,8 @@ export default function WelcomeScreen({ onCreateRoom, onJoinRoom, onPreview, res
     setIsSubmitting(action === 'join' ? 'join' : 'create');
 
     try {
-      if (action === 'join') await onJoinRoom(cleanedName, roomCode);
-      else await onCreateRoom(cleanedName);
+      if (action === 'join') await onJoinRoom(cleanedName, roomCode, avatarId);
+      else await onCreateRoom(cleanedName, avatarId);
     } catch (error) {
       if (action === 'join') setJoinError(error.message);
       else setNameError(error.message);
@@ -141,6 +145,37 @@ export default function WelcomeScreen({ onCreateRoom, onJoinRoom, onPreview, res
               <span aria-live="polite">{displayName.length}/{MAX_NAME_LENGTH}</span>
             </div>
 
+            <fieldset className={styles.characterPicker} disabled={Boolean(isSubmitting) || isRestoring}>
+              <legend className={styles.fieldLabel}>Choose your character</legend>
+              <div className={styles.characterGrid}>
+                {CHARACTERS.map((character) => (
+                  <label
+                    className={`${styles.characterChoice} ${avatarId === character.id ? styles.characterSelected : ''}`}
+                    key={character.id}
+                    onBlur={() => setInspectedAvatarId(null)}
+                    onFocus={() => setInspectedAvatarId(character.id)}
+                    onMouseEnter={() => setInspectedAvatarId(character.id)}
+                    onMouseLeave={() => setInspectedAvatarId(null)}
+                    title={`${character.inspiration} · ${character.note}`}
+                  >
+                    <input
+                      checked={avatarId === character.id}
+                      name="avatar-id"
+                      onChange={() => setAvatarId(character.id)}
+                      type="radio"
+                      value={character.id}
+                    />
+                    <CharacterSprite animate={avatarId === character.id} decorative id={character.id} state={avatarId === character.id ? 'selected' : 'idle'} />
+                    <span>{character.name}</span>
+                  </label>
+                ))}
+              </div>
+              <p className={styles.characterCredit} id="character-credit">
+                Inspired by <strong>{getCharacter(inspectedAvatarId || avatarId).inspiration}</strong> · {getCharacter(inspectedAvatarId || avatarId).note}
+                {(inspectedAvatarId || avatarId) === 'ledger-architect' && '. Fictional design; no verified likeness exists.'}
+              </p>
+            </fieldset>
+
               <div className={styles.createForm}>
               <button className={styles.createButton} disabled={Boolean(isSubmitting) || isRestoring} name="action" value="create" type="submit">
                 <span>{isSubmitting === 'create' ? 'Creating room…' : 'Create a room'}</span><span aria-hidden="true">↗</span>
@@ -193,10 +228,10 @@ export default function WelcomeScreen({ onCreateRoom, onJoinRoom, onPreview, res
 
             <p className={styles.previewNote}>
               <span aria-hidden="true">✳</span>
-              Rooms are saved by the server. Ready and match play are coming in the next multiplayer phase.
+              Rooms and matches are live. Gather 4–5 players in separate browser sessions to play.
             </p>
             </form>
-            <button className={styles.previewButton} disabled={Boolean(isSubmitting) || isRestoring} onClick={() => onPreview(displayName.trim() || 'Player')} type="button">
+            <button className={styles.previewButton} disabled={Boolean(isSubmitting) || isRestoring} onClick={() => onPreview(displayName.trim() || 'Player', avatarId)} type="button">
               Explore the local match preview
             </button>
           </section>

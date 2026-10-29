@@ -64,10 +64,11 @@ journey. CI publication remains deferred by project choice.
 
 ## Current blockers
 
-On the 2026-10-25 Windows workspace, Docker was not running, so Redis, the
-editor/runner profiles, Linux jail checks, and live browser journeys could
-not be exercised together. Complete those gates before claiming Phase 13's
-full product exit criterion or shipping the game. The staging and production
+On 2026-10-28, local Docker Desktop started Redis, editor-sync, and the runner;
+the runner preflight and all eight Linux jail integration checks passed without
+skips. The live browser journeys and Redis outage drill still need to be run.
+Complete those gates before claiming Phase 13's full product exit criterion
+or shipping the game. The staging and production
 environments and metrics dashboard are not deployed. The selectable authored
 challenges are still drafts, so production match start is blocked; staging
 requires an explicit draft-playtest setting.

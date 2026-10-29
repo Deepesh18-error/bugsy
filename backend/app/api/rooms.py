@@ -95,7 +95,7 @@ async def create_room(
         _require_allowed_origin(request)
         if not getattr(request.app.state, "accept_new_matches", True):
             raise RoomServiceError("NEW_MATCHES_PAUSED", "New matches are temporarily paused.", 503)
-        result = await _service(request).create_room(payload.display_name, payload.capacity)
+        result = await _service(request).create_room(payload.display_name, payload.capacity, payload.avatar_id)
         metrics = getattr(request.app.state, "operational_metrics", None)
         if metrics is not None:
             metrics.increment("room_created")
@@ -112,7 +112,7 @@ async def join_room(
         _require_allowed_origin(request)
         subject = request.client.host if request.client is not None else "unknown"
         result = await _service(request).join_room(
-            payload.room_code, payload.display_name, join_subject=subject
+            payload.room_code, payload.display_name, join_subject=subject, avatar_id=payload.avatar_id
         )
         await _notify_room_changed(request, result.state.room_code)
         return _success(response, result, request)

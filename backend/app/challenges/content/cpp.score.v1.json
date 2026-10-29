@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "id": "cpp.score",
+  "version": "1.0.0",
+  "category": "c-plus-plus",
+  "title": "Repair the Score",
+  "prompt": "Repair these C++20 score functions. Add points, subtract exactly the requested points, and reset the score to zero. Keep the three function names and parameters so the server can check them. The shared file does not need a main function.",
+  "language": "cpp",
+  "starter_code": "// C++20: edit the functions below. Do not add main().\nextern \"C\" int add_score(int current, int points) {\n    return current + points;\n}\n\nextern \"C\" int subtract_score(int current, int points) {\n    // TODO: subtract exactly points from current.\n    return current - 1;\n}\n\nextern \"C\" int reset_score(int current) {\n    // TODO: return a fresh zero score.\n    return current;\n}\n",
+  "functions": [
+    {"id": "add", "name": "add_score", "purpose": "Add the supplied points to the current score."},
+    {"id": "subtract", "name": "subtract_score", "purpose": "Subtract the supplied points from the current score."},
+    {"id": "reset", "name": "reset_score", "purpose": "Reset the score to zero."}
+  ],
+  "todos": [
+    {"id": "fix-subtract", "instructions": "Make subtract_score subtract the points parameter, rather than a fixed value.", "target_function_ids": ["subtract"]},
+    {"id": "fix-reset", "instructions": "Make reset_score return zero for any current score.", "target_function_ids": ["reset"]}
+  ],
+  "tests": [
+    {"id": "add-points", "test_definition_id": "cpp_add_points", "name": "Add points", "visibility": "public", "required_for_civilian_win": true, "expected_behavior": "Adding points returns current plus points.", "target_function_ids": ["add"], "public_description": "Checks adding positive and negative points.", "safe_failure_message": "Add did not return the expected score."},
+    {"id": "subtract-points", "test_definition_id": "cpp_subtract_points", "name": "Subtract points", "visibility": "public", "required_for_civilian_win": true, "expected_behavior": "Subtracting points returns current minus points.", "target_function_ids": ["subtract"], "public_description": "Checks subtraction using the points parameter.", "safe_failure_message": "Subtract did not use the requested points."},
+    {"id": "reset-score", "test_definition_id": "cpp_reset_score", "name": "Reset score", "visibility": "public", "required_for_civilian_win": true, "expected_behavior": "Reset returns zero from any current score.", "target_function_ids": ["reset"], "public_description": "Checks resetting a nonzero score.", "safe_failure_message": "Reset did not return zero."},
+    {"id": "score-sequence", "test_definition_id": "cpp_score_sequence", "visibility": "hidden", "required_for_civilian_win": true, "expected_behavior": "A sequence of add, subtract, and reset operations produces the correct score.", "target_function_ids": ["add", "subtract", "reset"]}
+  ],
+  "runtime_policy": "cpp20-standard-v1",
+  "reference_solution": "extern \"C\" int add_score(int current, int points) { return current + points; }\nextern \"C\" int subtract_score(int current, int points) { return current - points; }\nextern \"C\" int reset_score(int current) { (void)current; return 0; }\n",
+  "sabotage_objectives": [
+    {"id": "regress-subtract", "private_description": "After subtract_score passes an official check, introduce a plausible logic error only inside subtract_score that makes its test fail again. Only uninterrupted edits by you count. Keep the verified revision unchanged until the round deadline.", "target_function_ids": ["subtract"], "target_test_ids": ["subtract-points"], "verification": {"kind": "test_regression", "test_id": "subtract-points"}, "progress_policy": "verified_once", "completion_effect": "record_completion", "fairness_notes": "The server checks a previously passing revision, uninterrupted impostor authorship, a target-only function change, and an assertion failure. Credit consumes a match verification credit and is cleared by later edits."}
+  ],
+  "authorship": {"authored_by": "CodeMafia project team", "created_at": "2026-10-28", "review_status": "draft"}
+}

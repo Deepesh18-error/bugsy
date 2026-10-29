@@ -129,7 +129,7 @@ export default function MeetingScreen({ room, categoryName, roundNumber, onProce
               </div>
               <ul className={styles.playerList}>
                 {room.players.map((player) => (
-                  <PlayerCard className={styles.playerRow} key={player.id} player={player} variant="compact" />
+                  <PlayerCard className={styles.playerRow} key={player.id} player={player} spriteState="meeting" variant="compact" />
                 ))}
               </ul>
 

@@ -13,6 +13,7 @@ from app.game.models import (
     RoomState, RoundEndReason, MAX_SABOTAGE_CREDITS,
 )
 from app.rooms.identity import normalize_display_name
+from app.rooms.avatars import DEFAULT_AVATAR_ID, validate_avatar_id
 
 
 class ApiModel(BaseModel):
@@ -21,7 +22,13 @@ class ApiModel(BaseModel):
 
 class CreateRoomRequest(ApiModel):
     display_name: str = Field(max_length=96)
+    avatar_id: str = Field(default=DEFAULT_AVATAR_ID, max_length=32)
     capacity: Literal[4, 5] = 5
+
+    @field_validator("avatar_id")
+    @classmethod
+    def validate_avatar(cls, value: str) -> str:
+        return validate_avatar_id(value)
 
     @field_validator("display_name")
     @classmethod
@@ -32,6 +39,12 @@ class CreateRoomRequest(ApiModel):
 class JoinRoomRequest(ApiModel):
     room_code: str = Field(min_length=1, max_length=32)
     display_name: str = Field(max_length=96)
+    avatar_id: str = Field(default=DEFAULT_AVATAR_ID, max_length=32)
+
+    @field_validator("avatar_id")
+    @classmethod
+    def validate_avatar(cls, value: str) -> str:
+        return validate_avatar_id(value)
 
     @field_validator("display_name")
     @classmethod
@@ -42,6 +55,7 @@ class JoinRoomRequest(ApiModel):
 class PublicPlayer(ApiModel):
     player_id: str
     display_name: str
+    avatar_id: str
     connection: ConnectionStatus
     is_ready: bool
     is_alive: bool
@@ -200,6 +214,7 @@ def build_room_response(room: RoomState, player_id: str) -> RoomResponse:
         PublicPlayer(
             player_id=item.player_id,
             display_name=item.display_name,
+            avatar_id=item.avatar_id,
             connection=item.connection,
             is_ready=item.is_ready,
             is_alive=item.is_alive,

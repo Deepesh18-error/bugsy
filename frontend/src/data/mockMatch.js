@@ -28,6 +28,7 @@ export const CATEGORIES = [
   { id: 'security', name: 'Security', description: 'Trust boundaries, validation, and safe code.' },
   { id: 'frontend', name: 'Front-End', description: 'Interfaces, browser behavior, and user experience.' },
   { id: 'backend', name: 'Back-End', description: 'APIs, services, and data flow.' },
+  { id: 'c-plus-plus', name: 'C++', description: 'Repair a small C++20 program together.' },
 ];
 
 export const PREVIEW_PEER_VOTES = Object.freeze({
@@ -73,6 +74,12 @@ export const CHALLENGES = {
     summary: 'Return a predictable API response and handle missing records safely.',
     starterCode: `def build_user_response(user):\n    # TODO: return None when the user does not exist\n    if user is None:\n        return {}\n\n    return {\n        "id": user.get("id"),\n        # TODO: include the display name from the record\n        "name": user.get("username"),\n    }`,
     testNames: ['Missing user is handled', 'Response contains an ID', 'Display name uses the right field'],
+  },
+  'c-plus-plus': {
+    title: 'Repair the score',
+    summary: 'Fix score operations in C++20.',
+    starterCode: 'extern "C" int add_score(int current, int points) { return current + points; }\n',
+    testNames: ['Add points', 'Subtract points', 'Reset score'],
   },
 };
 
@@ -174,10 +181,11 @@ export function createRoomCode() {
   }).join('');
 }
 
-export function buildPreviewRoom(displayName, roomCode, isCreating) {
+export function buildPreviewRoom(displayName, roomCode, isCreating, avatarId = 'linux-builder') {
   const localPlayer = {
     id: 'local-player',
     name: displayName,
+    avatarId,
     isYou: true,
     isDemo: false,
     ready: false,
@@ -192,6 +200,7 @@ export function buildPreviewRoom(displayName, roomCode, isCreating) {
     { id: 'preview-ari', name: 'Ari', tone: 'gold' },
   ].map((player, index) => ({
     ...player,
+    avatarId: ['apple-inventor', 'apollo-coder', 'python-creator'][index],
     isYou: false,
     isDemo: true,
     isHost: !isCreating && index === 0,

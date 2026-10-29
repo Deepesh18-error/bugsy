@@ -1,8 +1,10 @@
 import styles from '../styles/components/PlayerCard.module.css';
+import CharacterSprite from './CharacterSprite.jsx';
 
 export default function PlayerCard({
   player,
   variant = 'compact',
+  spriteState,
   className = '',
 }) {
   const isEliminated = player.isAlive === false;
@@ -16,9 +18,9 @@ export default function PlayerCard({
 
   return (
     <li className={`${styles.card} ${styles[variant] ?? ''} ${className}`.trim()}>
-      <span className={`${styles.avatar} ${toneClass}`} aria-hidden="true">
-        {player.name?.trim().slice(0, 1).toUpperCase() || '?'}
-      </span>
+      {player.avatarId
+        ? <CharacterSprite className={styles.characterAvatar} decorative id={player.avatarId} state={isEliminated ? 'loss' : spriteState || (variant === 'lobby' && player.ready ? 'ready' : 'idle')} />
+        : <span className={`${styles.avatar} ${toneClass}`} aria-hidden="true">{player.name?.trim().slice(0, 1).toUpperCase() || '?'}</span>}
       <span className={styles.identity}>
         <span className={styles.name}>
           {player.name || 'Unnamed player'}

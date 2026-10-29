@@ -60,9 +60,10 @@ export default function LiveArena({ room, role, categoryName, roundNumber, total
   }), [ownPlayer?.id, ownPlayer?.name]);
   const editor = useCollaborativeEditor(session, participant,
     Boolean(session) && connectionStatus === 'connected');
+  const isCpp = session?.challenge?.language === 'cpp';
   const { feedback: provisional, run: runProvisional } = useCodeFeedback(
     `${room.code}:${roundNumber}`, source,
-    BROWSER_FEEDBACK_ENABLED ? feedbackBundle?.tests : null,
+    BROWSER_FEEDBACK_ENABLED && !isCpp ? feedbackBundle?.tests : null,
   );
 
   useEffect(() => {
@@ -75,16 +76,17 @@ export default function LiveArena({ room, role, categoryName, roundNumber, total
   }, [editor.sharedText]);
 
   useEffect(() => {
-    const controller = new AbortController();
     setFeedbackBundle(null);
     setBundleError('');
+    if (!session?.challenge || session.challenge.language === 'cpp') return undefined;
+    const controller = new AbortController();
     loadPublicFeedbackBundle(room.code, roundNumber, controller.signal)
       .then((bundle) => setFeedbackBundle(bundle))
       .catch((error) => {
         if (error.name !== 'AbortError') setBundleError(error.message);
       });
     return () => controller.abort();
-  }, [room.code, roundNumber]);
+  }, [room.code, roundNumber, session?.challenge?.language]);
 
   useEffect(() => {
     if (officialEvent?.name !== 'OfficialTestResult') return;
@@ -289,7 +291,7 @@ export default function LiveArena({ room, role, categoryName, roundNumber, total
             cooldownSeconds={timeLeft(sabotageCooldownUntil)} />}
           <p className={styles.challengeSummary}>Sabotage can win only at the round deadline, after at least 30 seconds to respond. Editing or restoring the code clears its current verification. Repair and rerun tests, or call a meeting.</p>
           <TestResults bundle={feedbackBundle} bundleError={bundleError}
-            browserFeedbackEnabled={BROWSER_FEEDBACK_ENABLED}
+            browserFeedbackEnabled={BROWSER_FEEDBACK_ENABLED && !isCpp}
             provisional={provisional} official={displayedOfficialResult}
             officialStatus={officialStatus} officialError={officialError}
             revisionId={revisionId}
@@ -337,8 +339,8 @@ export default function LiveArena({ room, role, categoryName, roundNumber, total
         </section>
         <section className={styles.editorPanel} aria-labelledby="live-editor-title">
           <div className={styles.editorHeader}>
-            <div><p className={styles.eyebrow}>SHARED WORKSPACE · LIVE</p><h2 id="live-editor-title">challenge.py</h2></div>
-            <span className={styles.languageBadge}>PYTHON</span>
+            <div><p className={styles.eyebrow}>SHARED WORKSPACE · LIVE</p><h2 id="live-editor-title">{isCpp ? 'challenge.cpp' : 'challenge.py'}</h2></div>
+            <span className={styles.languageBadge}>{isCpp ? 'C++20' : 'PYTHON'}</span>
           </div>
           {sessionError && <StatusMessage status="error">{sessionError}</StatusMessage>}
           {editor.error && <StatusMessage status="error">{editor.error}</StatusMessage>}
@@ -350,6 +352,7 @@ export default function LiveArena({ room, role, categoryName, roundNumber, total
           </div>
           <Suspense fallback={<p>Loading editor…</p>}>
             {session && <CodeEditor sharedText={editor.sharedText} awareness={editor.awareness}
+              language={session.challenge.language} label={isCpp ? 'Shared C++ code' : 'Shared Python code'}
               canEdit={editor.canEdit && connectionStatus === 'connected' && secondsLeft > 0}
               preferAccessibleEditor={accessibleMode} />}
           </Suspense>
@@ -363,7 +366,7 @@ export default function LiveArena({ room, role, categoryName, roundNumber, total
           <section className={styles.playersPanel}>
             <p className={styles.eyebrow}>IN THIS ROOM</p><h2>Players</h2>
             <ul className={styles.playerList}>{room.players.map((player) =>
-              <PlayerCard className={styles.playerRow} key={player.id} player={player} variant="compact" />)}</ul>
+              <PlayerCard className={styles.playerRow} key={player.id} player={player} spriteState="coding" variant="compact" />)}</ul>
           </section>
           <ChatPanel
             className={styles.liveChat}

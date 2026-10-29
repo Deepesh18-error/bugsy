@@ -295,8 +295,8 @@ export default function App() {
     }
   }
 
-  function enterLobby(displayName, roomCode, isCreating) {
-    setRoom(buildPreviewRoom(displayName, roomCode, isCreating));
+  function enterLobby(displayName, roomCode, isCreating, avatarId) {
+    setRoom(buildPreviewRoom(displayName, roomCode, isCreating, avatarId));
     setRoomMode('preview');
     setLiveCategoryResult(null);
     previousLivePlayers.current = null;
@@ -305,8 +305,8 @@ export default function App() {
     setScreen('lobby');
   }
 
-  async function handleCreateRoom(displayName) {
-    const snapshot = await createRoom(displayName);
+  async function handleCreateRoom(displayName, avatarId) {
+    const snapshot = await createRoom(displayName, avatarId);
     setLiveCategoryResult(null);
     previousLivePlayers.current = null;
     setRoom(toLobbyView(snapshot));
@@ -318,8 +318,8 @@ export default function App() {
     setScreen('lobby');
   }
 
-  async function handleJoinRoom(displayName, roomCode) {
-    const snapshot = await joinRoom(displayName, roomCode);
+  async function handleJoinRoom(displayName, roomCode, avatarId) {
+    const snapshot = await joinRoom(displayName, roomCode, avatarId);
     setLiveCategoryResult(null);
     previousLivePlayers.current = null;
     setRoom(toLobbyView(snapshot));
@@ -331,8 +331,8 @@ export default function App() {
     setScreen('lobby');
   }
 
-  function handlePreview(displayName) {
-    enterLobby(displayName, createRoomCode(), true);
+  function handlePreview(displayName, avatarId) {
+    enterLobby(displayName, createRoomCode(), true, avatarId);
   }
 
   async function handleLiveToggleReady() {
@@ -803,6 +803,7 @@ export default function App() {
       return (
         <RoleRevealScreen
           displayName={currentPlayer?.name ?? 'Player'}
+          avatarId={currentPlayer?.avatarId}
           role={liveRoomSnapshot?.own_role ?? null}
           category={liveSelectedCategory?.name ?? 'Selected category'}
           roomCode={room.code}
@@ -852,6 +853,10 @@ export default function App() {
       const result = liveResultView(liveRoomSnapshot);
       if (result) return <ResultsScreen
         isLive roomCode={room.code}
+        avatarId={room.players.find((player) => player.id === room.currentPlayerId)?.avatarId}
+        characterResultState={liveRoomSnapshot?.match_result
+          ? (liveRoomSnapshot.match_result.winner === (liveRoomSnapshot.own_role === 'civilian' ? 'civilians' : 'impostor') ? 'win' : 'loss')
+          : 'ready'}
         roundNumber={liveRoomSnapshot?.round_number ?? 1}
         totalRounds={4} result={result}
         onContinue={handleLiveResultContinue}
@@ -937,6 +942,7 @@ export default function App() {
     return (
       <RoleRevealScreen
         displayName={currentPlayer?.name ?? 'Player'}
+        avatarId={currentPlayer?.avatarId}
         role={privateRole}
         category={selectedCategory?.name ?? 'Selected category'}
         roomCode={room.code}
@@ -991,6 +997,10 @@ export default function App() {
         {screen === 'results' && gameResult && (
           <ResultsScreen
             roomCode={room.code}
+            avatarId={room.players.find((player) => player.id === room.currentPlayerId)?.avatarId}
+            characterResultState={gameResult.type === 'match'
+              ? (gameResult.outcomeLabel === `${privateRole === 'civilian' ? 'CIVILIAN' : 'IMPOSTOR'} WIN` ? 'win' : 'loss')
+              : 'ready'}
             roundNumber={roundNumber}
             totalRounds={PREVIEW_MATCH.totalRounds}
             result={gameResult}

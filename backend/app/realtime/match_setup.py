@@ -53,6 +53,7 @@ class MatchSetupPolicy:
 PINNED_CHALLENGES = {
     "object-oriented": (("oop.counter", "1.1.0"), ("oop.stack", "1.0.0")),
     "back-end": (("backend.wallet", "1.0.0"),),
+    "c-plus-plus": (("cpp.score", "1.0.0"),),
 }
 
 

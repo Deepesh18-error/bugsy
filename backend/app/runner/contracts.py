@@ -41,6 +41,7 @@ class TestFailureKind(StrEnum):
     ASSERTION = "assertion"
     EXCEPTION = "exception"
     TIMEOUT = "timeout"
+    COMPILE_ERROR = "compile_error"
 
 
 class RunnerTestCase(StrictModel):
@@ -59,7 +60,7 @@ class RunnerJob(StrictModel):
     challenge_id: Token
     challenge_version: Annotated[str, StringConstraints(pattern=r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$", max_length=32)]
     challenge_content_digest: Digest
-    runtime_policy: Literal["python-standard-v1"]
+    runtime_policy: Literal["python-standard-v1", "cpp20-standard-v1"]
     source_revision_id: Token
     source: str = Field(min_length=1, max_length=MAX_SOURCE_BYTES)
     requested_by_player_id: Token

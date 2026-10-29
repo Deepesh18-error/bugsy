@@ -18,6 +18,10 @@ class SandboxProtocolError(ValueError):
     """The jailed process sent an oversized, forged, or malformed message."""
 
 
+class SandboxClosedError(SandboxProtocolError):
+    """The jailed process ended before sending its next document."""
+
+
 @dataclass(frozen=True, slots=True)
 class OperationReply:
     ok: bool
@@ -43,7 +47,9 @@ async def read_document(reader: asyncio.StreamReader) -> dict[str, object]:
         line = await reader.readline()
     except (ValueError, asyncio.LimitOverrunError) as exc:
         raise SandboxProtocolError("sandbox output line exceeds its limit") from exc
-    if not line or len(line) > MAX_LINE_BYTES or not line.endswith(b"\n"):
+    if not line:
+        raise SandboxClosedError("sandbox output ended")
+    if len(line) > MAX_LINE_BYTES or not line.endswith(b"\n"):
         raise SandboxProtocolError("sandbox output is missing or too large")
     try:
         value = json.loads(line.decode("utf-8"), object_pairs_hook=_unique_object,

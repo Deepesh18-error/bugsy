@@ -1,0 +1,25 @@
+.sprite {
+  display: inline-block;
+  width: 42px;
+  height: 56px;
+  flex: 0 0 auto;
+  background-repeat: no-repeat;
+  background-size: 400% 200%;
+  image-rendering: pixelated;
+  transform-origin: 50% 90%;
+}
+.idle { animation: breathe 3s ease-in-out infinite; }
+.selected { animation: acknowledge 2.7s ease-in-out infinite; }
+.ready { animation: lift 3s ease-in-out infinite; }
+.coding { animation: type .7s ease-in-out infinite alternate; }
+.meeting { animation: alert 3.2s ease-in-out infinite; }
+.win { animation: lift 2.8s ease-in-out infinite; }
+.loss { animation: slump 3.2s ease-in-out infinite; }
+.still { animation: none; }
+@keyframes breathe { 50% { transform: translateY(-1px) scaleY(1.01); } }
+@keyframes acknowledge { 12%, 22% { transform: rotate(-2deg); } 30%, 100% { transform: none; } }
+@keyframes lift { 14%, 24% { transform: translateY(-2px); } 35%, 100% { transform: none; } }
+@keyframes type { to { transform: translateY(1px); } }
+@keyframes alert { 8%, 14% { transform: translateX(1px); } 11%, 17%, 100% { transform: none; } }
+@keyframes slump { 15%, 26% { transform: translateY(2px); } 35%, 100% { transform: none; } }
+@media (prefers-reduced-motion: reduce) { .sprite { animation: none !important; } }

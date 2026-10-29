@@ -21,6 +21,8 @@
   font-size: 0.68rem;
   font-weight: 700;
 }
+.characterAvatar { width: 36px; height: 48px; margin-block: -5px; }
+.lobby .characterAvatar { width: 44px; height: 59px; margin-block: -7px; }
 .coral { background: rgb(255 120 94 / 19%); color: #ff9988; }
 .violet { background: rgb(173 139 255 / 18%); color: #c4a6ff; }
 .mint { background: rgb(115 213 179 / 17%); color: #73d5b3; }

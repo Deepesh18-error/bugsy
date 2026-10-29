@@ -17,7 +17,7 @@ export default defineConfig({
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: process.env.CODEMAFIA_E2E_WEB_URL ? undefined : {
-    command: 'npm run dev -- --host 127.0.0.1 --port 5173 --strictPort',
+    command: 'npm run dev',
     url: baseURL,
     env: { VITE_API_BASE_URL: apiURL },
     reuseExistingServer: true,

@@ -111,6 +111,7 @@ def _player(value: dict[str, Any]) -> PlayerState:
         player_id=value["player_id"],
         display_name=value["display_name"],
         joined_at=_date(value["joined_at"]),
+        avatar_id=value.get("avatar_id", "linux-builder"),
         connection=ConnectionStatus(value["connection"]),
         is_ready=value["is_ready"],
         is_alive=value["is_alive"],

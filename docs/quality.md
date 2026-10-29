@@ -12,7 +12,7 @@ service, the Linux jail, and four browsers work together.
 | Room WebSocket | authenticated identity, Origin, strict schema, frame/rate limits, reconnect and private delivery | `backend/tests/api/`, `backend/tests/realtime/` |
 | Editor | current room/match/round, guessed IDs, departed or eliminated players, stale writes, Yjs convergence | `backend/tests/editor/`, `services/editor-sync/tests/` |
 | Runner | pinned tests, signed/current results, queue pressure, malformed results, job coalescing | `backend/tests/runner/`, `services/runner/tests/test_contract_and_parser.py` |
-| Linux isolation | infinite loop, output, filesystem/network/import attempts, memory/process limits, scratch cleanup | `services/runner/tests/test_sandbox_integration.py` **inside the runner image** |
+| Linux isolation | infinite loop, output, filesystem/network/import attempts, memory/process limits, scratch cleanup | `services/runner/tests/test_sandbox_integration.py` mounted into the runner container |
 | Frontend decisions | form validation, readiness controls, private ballot, stale official result, public-build browser-check removal | `frontend/tests/screens.test.jsx` |
 | Browser interaction | four separate player sessions through result; refresh and tab reopen | `frontend/e2e/match-flow.spec.js`, `reconnect.spec.js` |
 | Browser privacy | each socket receives only its own role and objectives | `frontend/e2e/privacy.spec.js` |
@@ -47,10 +47,13 @@ The optional `CODEMAFIA_E2E_API_URL`, `CODEMAFIA_E2E_EDITOR_URL`, and
 `CODEMAFIA_E2E_WEB_URL` values configure the browser suite. The API's allowed
 origins must include the chosen web URL.
 
-The Linux jail check must run in the actual runner image on a compatible host:
+The Linux jail check must run against the actual runner image on a compatible
+host. The production image does not contain test files, so mount them read-only
+from the repository root in PowerShell:
 
 ```powershell
-docker compose -f infra/compose.yaml --profile runner run --rm --no-deps runner python -m unittest discover -s tests -v
+$repoRoot = (Get-Location).Path
+docker compose -f infra/compose.yaml --env-file infra/.env --profile runner run --rm --no-deps -v "${repoRoot}\services\runner\tests:/opt/runner/tests:ro" --entrypoint python runner -m unittest discover -s /opt/runner/tests -p test_sandbox_integration.py -v
 ```
 
 **Skipped jail tests do not count as a pass.** The Windows import check only
@@ -95,14 +98,15 @@ needs a running Docker daemon.
 
 ## Current validation status
 
-As of 2026-10-25, 53 game, 52 realtime, 19 API, 19 editor, and 15 backend runner
-tests pass locally, alongside five frontend component checks and a production
-build. Editor service loopback tests and three browser preview accessibility
-checks also passed earlier that day. The live browser journeys, Redis
-restart/outage exercise, API container build, and Linux nsjail checks remain
-unverified because the Docker daemon and live services were unavailable on
-this Windows workspace. See
-`docs/release-checklist.md` before describing the product as fully validated.
+As of 2026-10-28, Redis and editor-sync are healthy in local Docker Desktop,
+the runner remains up after its nsjail preflight, and all eight real-jail
+integration checks pass without skips. The 2026-10-25 unit-test runs recorded
+53 game, 52 realtime, 19 API, 19 editor, and 15 backend runner passes, along
+with five frontend component checks, a production build, editor loopback tests,
+and three browser preview accessibility checks. The live four-player browser
+journey, Redis restart/outage exercise, API container build, and target-host
+runner validation remain open. See `docs/release-checklist.md` before
+describing the product as fully validated.
 
 
 ## October 27 additions

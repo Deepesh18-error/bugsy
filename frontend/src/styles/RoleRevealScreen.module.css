@@ -107,6 +107,7 @@
   box-shadow: 0 28px 90px rgb(0 0 0 / 27%);
   text-align: center;
 }
+.roleCharacter { width: 72px; height: 96px; margin: 0 auto 12px; }
 
 .roleSymbol {
   display: grid;

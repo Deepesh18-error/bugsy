@@ -8,8 +8,8 @@ from app.game.models import OfficialTestResult, SabotageObjectiveProgress, Objec
 from app.rooms.repository import EditorDocument, EditorRevision, StoredRoom
 from app.rooms.serialization import serialize_room, deserialize_room
 from app.runner.result_processor import RunnerResultProcessor
-from app.runner.sabotage_policy import attributable_regression
-from app.runner.contracts import TestFailureKind
+from app.runner.sabotage_policy import attributable_regression, _cpp_shape
+from app.runner.contracts import TestFailureKind, RunnerTestResult
 from runner_support import NOW, LOADED, KEY, FakeRooms, FakeRunner, FakeConnections, coding_room, run_immediate
 from test_runner_flow import signed_result
 from app.runner.service import RunnerService
@@ -17,6 +17,48 @@ from app.game.commands import RequestOfficialTestRun
 
 
 class SabotagePolicyTests(unittest.TestCase):
+    def test_cpp_target_only_shape(self):
+        from app.challenges.loader import load_challenge
+        good = load_challenge('cpp.score', '1.0.0').challenge.reference_solution
+        bad = good.replace('return current - points;', 'return current - 1;')
+        before = _cpp_shape(good, {'subtract_score'})
+        after = _cpp_shape(bad, {'subtract_score'})
+        self.assertIsNotNone(before)
+        self.assertEqual(before[0], after[0])
+        self.assertNotEqual(before[1], after[1])
+        self.assertNotEqual(before[0], _cpp_shape(bad.replace('current + points', 'current + 2'), {'subtract_score'})[0])
+        self.assertIsNone(_cpp_shape('int subtract_score(int x) {', {'subtract_score'}))
+
+    def test_cpp_regression_requires_passing_baseline_and_target_only_edit(self):
+        from app.challenges.loader import load_challenge
+        loaded = load_challenge('cpp.score', '1.0.0')
+        challenge = loaded.challenge
+        objective = challenge.sabotage_objectives[0]
+        good = challenge.reference_solution
+        bad = good.replace('return current - points;', 'return current - 1;')
+        baseline = OfficialTestResult('cpp-baseline', 'before', NOW - timedelta(seconds=2),
+            passed_test_ids=tuple(test.id for test in challenge.tests), all_required_tests_passed=True)
+        current = replace(self.state.match.current_round,
+            category_id=challenge.category, challenge_id=challenge.id,
+            challenge_version=challenge.version, challenge_content_digest=loaded.content_digest,
+            official_test_history=(baseline,),
+            sabotage_objectives=(SabotageObjectiveProgress(objective.id),))
+        state = replace(self.state, match=replace(self.state.match, current_round=current))
+        document = EditorDocument('revision-1', bad, 'eA==', (
+            EditorRevision('before', good, 'player-1', NOW - timedelta(seconds=3)),
+            EditorRevision('revision-1', bad, 'player-4', NOW - timedelta(seconds=1)),
+        ))
+        tests = tuple(RunnerTestResult(test_id=test.id,
+            passed=test.id not in {'subtract-points', 'score-sequence'},
+            failure_kind=TestFailureKind.ASSERTION if test.id in {'subtract-points', 'score-sequence'} else None)
+            for test in challenge.tests)
+        result = self.result.model_copy(update={'tests': tests})
+        self.assertTrue(attributable_regression(state, challenge, objective, document, result))
+        unrelated = bad.replace('current + points', 'current + 2')
+        unrelated_document = replace(document, source=unrelated,
+            history=(document.history[0], replace(document.history[1], source=unrelated)))
+        self.assertFalse(attributable_regression(state, challenge, objective, unrelated_document, result))
+
     def setUp(self):
         self.challenge = LOADED.challenge
         self.objective = self.challenge.sabotage_objectives[0]

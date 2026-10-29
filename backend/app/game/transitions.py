@@ -113,6 +113,7 @@ SUPPORTED_CATEGORY_IDS: tuple[str, ...] = (
     "security",
     "front-end",
     "back-end",
+    "c-plus-plus",
 )
 MAX_ROUNDS = 4
 MIN_PLAYERS = 4

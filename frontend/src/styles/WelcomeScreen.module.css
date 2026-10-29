@@ -244,6 +244,19 @@
   font-size: 0.62rem;
 }
 
+.characterPicker { min-width: 0; margin: 13px 0 0; padding: 0; border: 0; }
+.characterPicker legend { padding: 0; }
+.characterGrid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+.characterChoice { display: grid; min-width: 0; min-height: 92px; justify-items: center; align-content: center; gap: 2px; padding: 5px 2px; border: 1px solid #435258; border-radius: 8px; background: #111b21; color: #c8d1cd; cursor: pointer; text-align: center; }
+.characterChoice:hover { border-color: var(--color-mint); }
+.characterChoice:focus-within { outline: 2px solid var(--color-lime); outline-offset: 2px; }
+.characterChoice input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.characterChoice span:last-child { font-size: .53rem; line-height: 1.2; }
+.characterChoice > span:nth-child(2) { width: 42px; height: 56px; }
+.characterSelected { border-color: var(--color-lime); background: #26352d; color: #f5ffe3; }
+.characterCredit { min-height: 2.2em; margin: 9px 0 0; color: #a7b8ad; font-size: .66rem; line-height: 1.45; }
+@media (max-width: 420px) { .characterGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
 .fieldHint,
 .errorText {
   margin: 0;
