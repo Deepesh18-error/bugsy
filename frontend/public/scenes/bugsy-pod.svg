@@ -1,0 +1,128 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1034 1610" width="1034" height="1610">
+  <defs>
+    <clipPath id="bodyClip">
+      <path d="M290 420 C265 520 262 640 275 760 C285 900 310 1030 335 1165 L700 1165 C725 1030 750 900 765 760 C778 640 772 520 745 420 Z"/>
+    </clipPath>
+    <clipPath id="bigWinClip"><circle cx="517" cy="613" r="128"/></clipPath>
+    <clipPath id="smallWinClip"><circle cx="518" cy="938" r="46"/></clipPath>
+    <clipPath id="noseClip">
+      <path d="M292 395 C310 250 400 90 515 28 C630 90 720 250 745 395 Z"/>
+    </clipPath>
+    <clipPath id="baseClip">
+      <path d="M335 1170 L700 1170 L775 1245 Q780 1272 750 1272 L280 1272 Q255 1268 258 1245 Z"/>
+    </clipPath>
+    <clipPath id="bandClip"><rect x="290" y="395" width="455" height="40"/></clipPath>
+    <clipPath id="redBandClip"><rect x="335" y="1100" width="365" height="65"/></clipPath>
+  </defs>
+
+  <g stroke-linejoin="round" stroke-linecap="round">
+
+    <!-- FLAMES -->
+    <!-- left flame -->
+    <path d="M358 1282 L452 1282 C452 1380 440 1455 400 1508 C350 1450 332 1360 358 1282 Z" fill="#ff8a00" stroke="#1b1530" stroke-width="12"/>
+    <path d="M365 1320 C355 1380 372 1440 400 1485 C425 1440 437 1380 440 1320 Z" fill="#ffc20e"/>
+    <path d="M375 1335 C368 1385 378 1420 392 1448" fill="none" stroke="#fff" stroke-width="9" opacity=".9"/>
+    <!-- right flame -->
+    <g transform="translate(1034,0) scale(-1,1)">
+      <path d="M358 1282 L452 1282 C452 1380 440 1455 400 1508 C350 1450 332 1360 358 1282 Z" fill="#ff8a00" stroke="#1b1530" stroke-width="12"/>
+      <path d="M365 1320 C355 1380 372 1440 400 1485 C425 1440 437 1380 440 1320 Z" fill="#ffc20e"/>
+    </g>
+    <path d="M655 1335 C660 1385 650 1420 638 1448" fill="none" stroke="#fff" stroke-width="9" opacity=".0"/>
+    <!-- center flame -->
+    <path d="M452 1284 C440 1385 462 1480 515 1595 C568 1480 590 1385 578 1284 Z" fill="#ff8a00" stroke="#1b1530" stroke-width="12"/>
+    <path d="M462 1325 C452 1400 475 1480 515 1560 C555 1480 578 1400 568 1325 Z" fill="#ffc20e"/>
+    <path d="M480 1310 C472 1370 480 1420 497 1470" fill="none" stroke="#fff" stroke-width="10"/>
+
+    <!-- FINS -->
+    <!-- left fin -->
+    <path d="M262 765 C150 820 60 940 30 1100 C22 1160 22 1200 38 1226 C60 1238 100 1200 160 1150 C210 1105 260 1072 305 1048 Z" fill="#ee1c2e" stroke="#1b1530" stroke-width="14"/>
+    <path d="M255 835 C170 885 105 975 70 1055" fill="none" stroke="#fff" stroke-width="14"/>
+    <circle cx="66" cy="1066" r="7" fill="#fff" stroke="none"/>
+    <!-- right fin -->
+    <g transform="translate(1034,0) scale(-1,1)">
+      <path d="M262 765 C150 820 60 940 30 1100 C22 1160 22 1200 38 1226 C60 1238 100 1200 160 1150 C210 1105 260 1072 305 1048 Z" fill="#ee1c2e" stroke="#1b1530" stroke-width="14"/>
+      <path d="M262 770 C290 840 300 960 305 1046 C240 1085 200 1120 160 1150 C190 1060 240 880 262 770 Z" fill="#b60f26" stroke="none" opacity=".0"/>
+      <path d="M255 835 C170 885 105 975 70 1055" fill="none" stroke="#fff" stroke-width="14"/>
+      <circle cx="66" cy="1066" r="7" fill="#fff" stroke="none"/>
+    </g>
+    <!-- right fin shade (body side) -->
+    <path d="M772 770 C830 800 900 860 940 930 C900 960 800 1010 735 1050 C750 950 765 860 772 770 Z" fill="#c4122a" stroke="none" opacity=".85"/>
+    <path d="M800 835 C860 880 920 960 950 1030" fill="none" stroke="#fff" stroke-width="14"/>
+
+    <!-- BASE / NOZZLE -->
+    <path d="M335 1170 L700 1170 L775 1245 Q780 1272 750 1272 L280 1272 Q255 1268 258 1245 Z" fill="#8f949a"/>
+    <g clip-path="url(#baseClip)">
+      <path d="M535 1170 L780 1170 L780 1280 L560 1280 Z" fill="#5a5865"/>
+      <path d="M335 1170 L700 1170 L710 1182 L325 1182 Z" fill="#a8adb2"/>
+    </g>
+    <path d="M300 1243 L752 1243" stroke="#1b1530" stroke-width="7" fill="none"/>
+    <path d="M335 1170 L700 1170 L775 1245 Q780 1272 750 1272 L280 1272 Q255 1268 258 1245 Z" fill="none" stroke="#1b1530" stroke-width="14"/>
+
+    <!-- BODY -->
+    <path d="M290 420 C265 520 262 640 275 760 C285 900 310 1030 335 1165 L700 1165 C725 1030 750 900 765 760 C778 640 772 520 745 420 Z" fill="#fbfbfb"/>
+    <g clip-path="url(#bodyClip)">
+      <!-- soft shadow region on right -->
+      <path d="M628 430 C655 520 668 640 655 760 C650 800 640 830 610 850 C600 900 612 960 612 1010 C610 1050 600 1075 570 1090 L780 1170 L790 430 Z" fill="#d4d7da"/>
+      <!-- darker far-right strip -->
+      <path d="M692 430 C712 560 718 700 705 840 C700 960 700 1060 695 1170 L790 1170 L790 430 Z" fill="#9ea4a8"/>
+      <!-- window shadows -->
+      <ellipse cx="510" cy="645" rx="178" ry="170" fill="#d4d7da"/>
+      <ellipse cx="528" cy="972" rx="84" ry="82" fill="#d4d7da"/>
+    </g>
+    <path d="M290 420 C265 520 262 640 275 760 C285 900 310 1030 335 1165 L700 1165 C725 1030 750 900 765 760 C778 640 772 520 745 420 Z" fill="none" stroke="#1b1530" stroke-width="16"/>
+
+    <!-- RED BAND -->
+    <rect x="335" y="1100" width="365" height="65" fill="#ee1c2e"/>
+    <g clip-path="url(#redBandClip)">
+      <path d="M585 1100 L710 1100 L710 1165 L585 1165 Z" fill="#b60f26"/>
+    </g>
+    <path d="M330 1100 L706 1100" stroke="#1b1530" stroke-width="10" fill="none"/>
+    <path d="M335 1165 L700 1165" stroke="#1b1530" stroke-width="12" fill="none"/>
+
+    <!-- BIG WINDOW -->
+    <circle cx="517" cy="613" r="163" fill="#9aa0a6" stroke="#1b1530" stroke-width="12"/>
+    <circle cx="517" cy="613" r="141" fill="none" stroke="#6c7278" stroke-width="10" opacity=".8"/>
+    <circle cx="517" cy="613" r="128" fill="#12aef5" stroke="#1b1530" stroke-width="10"/>
+    <g clip-path="url(#bigWinClip)">
+      <path d="M600 490 C650 540 660 650 620 720 C580 760 540 760 520 750 C600 720 630 620 600 490 Z" fill="#0c8fd8"/>
+    </g>
+    <path d="M492 512 C462 545 443 585 440 625" fill="none" stroke="#fff" stroke-width="12"/>
+    <circle cx="441" cy="640" r="6" fill="#fff" stroke="none"/>
+
+    <!-- SMALL WINDOW -->
+    <circle cx="518" cy="938" r="72" fill="#9aa0a6" stroke="#1b1530" stroke-width="10"/>
+    <circle cx="518" cy="938" r="58" fill="none" stroke="#6c7278" stroke-width="6" opacity=".8"/>
+    <circle cx="518" cy="938" r="46" fill="#12aef5" stroke="#1b1530" stroke-width="8"/>
+    <g clip-path="url(#smallWinClip)">
+      <path d="M545 900 C575 925 570 965 540 985 C530 985 525 985 520 983 C548 965 555 930 545 900 Z" fill="#0c8fd8"/>
+    </g>
+    <path d="M500 912 C490 920 485 932 485 942" fill="none" stroke="#fff" stroke-width="7"/>
+
+    <!-- GRAY BAND -->
+    <rect x="290" y="395" width="455" height="40" fill="#9a9ea3"/>
+    <g clip-path="url(#bandClip)">
+      <path d="M622 395 L750 395 L750 435 L640 435 Z" fill="#5a5865"/>
+    </g>
+    <path d="M286 398 L748 398" stroke="#1b1530" stroke-width="8" fill="none"/>
+    <path d="M286 433 L748 433" stroke="#1b1530" stroke-width="9" fill="none"/>
+
+    <!-- NOSE CONE -->
+    <path d="M292 395 C310 250 400 90 515 28 C630 90 720 250 745 395 Z" fill="#ee1c2e"/>
+    <g clip-path="url(#noseClip)">
+      <path d="M520 28 C610 80 700 240 745 395 L640 395 C632 270 590 130 520 28 Z" fill="#b60f26"/>
+    </g>
+    <path d="M292 395 C310 250 400 90 515 28 C630 90 720 250 745 395 Z" fill="none" stroke="#1b1530" stroke-width="16"/>
+    <path d="M497 68 C440 130 385 250 340 375" fill="none" stroke="#fff" stroke-width="14"/>
+    <circle cx="332" cy="388" r="6" fill="#fff" stroke="none"/>
+  </g>
+<g aria-hidden="true"><rect x="318" y="480" width="398" height="650" rx="54" fill="#080a0d" stroke="#5b7080" stroke-width="17"/><rect x="333" y="495" width="368" height="620" rx="42" fill="#10151b" stroke="#e9b267" stroke-width="5"/></g><g fill="#b7c6cd" stroke="#293846" stroke-width="4">
+<circle cx="345" cy="510" r="7"/><circle cx="689" cy="510" r="7"/><circle cx="345" cy="1100" r="7"/><circle cx="689" cy="1100" r="7"/>
+</g>
+<g stroke="#6c8796" stroke-width="6" fill="none" stroke-linecap="round">
+<path d="M302 565v70m0 280v70M732 565v70m0 280v70"/>
+<path d="M385 461h65m134 0h65M385 1148h65m134 0h65"/>
+</g>
+<g fill="#e9ad67"><path d="m315 680-14 14v30l14-14zm0 45-14 14v30l14-14zm420 170-14 14v30l14-14zm0 45-14 14v30l14-14z"/></g></svg>
+
+
+

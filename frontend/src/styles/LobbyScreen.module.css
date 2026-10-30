@@ -524,3 +524,92 @@
   .readyButton,
   .startButton { transition: none; }
 }
+
+/* Docking bay: the same station seen from inside. */
+.page {
+  --font-mono: 'JetBrains Mono', 'Cascadia Mono', monospace;
+  font-family: 'Space Grotesk', 'Segoe UI', sans-serif;
+  background: linear-gradient(90deg, rgb(4 14 22 / 62%), rgb(4 14 22 / 85%) 54%, rgb(4 14 22 / 77%)), #07131f url('/scenes/docking-bay.webp') 44% center / cover fixed no-repeat;
+}
+.frame { width: min(100% - 48px, 1440px); }
+.topbar { min-height: 70px; border-color: #315263; }
+.brand { gap: 12px; font-size: .9rem; letter-spacing: .1em; }
+.brandMark { width: 38px; height: 38px; border-color: #68d3d3; border-radius: 4px; color: #90ecdf; font-size: 1.6rem; transform: none; }
+.topbarLocation { color: #a4c0c7; font: 600 .65rem var(--font-mono); letter-spacing: .08em; }
+.backButton { border: 1px solid #587483; padding: 9px 13px; color: #d7e6e6; font-family: var(--font-mono); font-size: .69rem; }
+.content { display: grid; min-height: calc(100vh - 124px); grid-template-columns: minmax(300px, .72fr) minmax(590px, 1.28fr); align-items: start; gap: 34px; padding-block: 52px 52px; }
+.intro { max-width: 490px; padding-top: clamp(40px, 8vh, 118px); }
+.kicker { color: #94dfd3; font-size: .68rem; }
+.kickerDot { background: #efb56d; box-shadow: 0 0 12px #efb56d; }
+.kickerIndex { color: #e5b67c; }
+.intro h1 { font-size: clamp(3rem, 5vw, 5.5rem); line-height: .97; letter-spacing: -.07em; text-shadow: 0 3px 22px #06131f; }
+.intro h1 span { color: #efba75; }
+.description { max-width: 420px; color: #d2e2e1; font-size: 1.02rem; line-height: 1.58; }
+.roomCodeCard { max-width: 410px; margin-top: 34px; border: 1px solid #698790; border-radius: 3px; background: rgb(7 24 34 / 90%); box-shadow: inset 0 1px rgb(190 230 227 / 12%), 0 16px 36px rgb(0 0 0 / 30%); }
+.roomCodeLabel { color: #aac8c9; font-size: .65rem; }
+.roomCode { color: #f6c379; font-size: clamp(1.3rem, 2vw, 2rem); letter-spacing: .15em; }
+.copyButton { border-color: #598b90; border-radius: 3px; background: #173d46; color: #d5faf4; font-size: .7rem; }
+.copyMessage { color: #b6d3d2; font-size: .65rem; }
+.lobbyNote { max-width: 410px; border-color: #4c6975; }
+.lobbyNote p { color: #c0d7d7; font-size: .75rem; }
+.lobbyCard { min-width: 0; flex: none; padding: 25px; border: 1px solid #55717c; border-radius: 3px; background: rgb(7 22 32 / 94%); box-shadow: inset 0 1px rgb(159 220 221 / 12%), 0 24px 64px rgb(0 0 0 / 32%); }
+.cardHeader { margin-bottom: 18px; }
+.cardEyebrow { color: #dfa763; font-size: .65rem; }
+.cardHeader h2 { font-size: 1.8rem; }
+.playerCount { color: #f0c382; font-size: 1.45rem; }
+.playerCount span { color: #9fb9c0; }
+.connectionStatus { margin: -4px 0 18px; }
+.playerList { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+.crewBay { display: flex; position: relative; min-width: 0; min-height: 219px; flex-direction: column; align-items: center; padding: 10px 5px 9px; border: 1px solid #37515e; background: linear-gradient(180deg, #182e3b, #0b1b28 70%); text-align: center; }
+.crewBay::before { position: absolute; inset: 0 0 auto; height: 3px; background: #637b82; content: ''; }
+.crewBayYou { border-color: #82c8bf; box-shadow: inset 0 0 0 1px rgb(130 200 191 / 16%); }
+.crewBayYou::before { background: #88ded1; }
+.crewBayOffline { opacity: .58; }
+.bayNumber { width: 100%; color: #98b8bf; font: 600 .53rem var(--font-mono); letter-spacing: .09em; text-align: left; }
+.bayCharacter { display: grid; min-height: 110px; place-items: center; overflow: hidden; }
+.bayCharacter > span:first-child { width: 76px; height: 102px; }
+.bayInitial { display: grid; width: 74px; height: 74px; place-items: center; border: 1px solid #4b7b85; border-radius: 50%; color: #bfe8df; font-size: 2rem; }
+.bayName { max-width: 100%; overflow: hidden; color: #f0f4f0; font-size: .73rem; text-overflow: ellipsis; white-space: nowrap; }
+.bayName span { color: #efbe7d; font: 600 .52rem var(--font-mono); }
+.bayRole { margin-top: 3px; color: #9bb6bc; font: 500 .49rem var(--font-mono); white-space: nowrap; }
+.bayStatus { width: 100%; margin-top: auto; padding: 5px 2px; border-top: 1px solid #38515c; color: #f0bf82; font: 700 .56rem var(--font-mono); letter-spacing: .08em; }
+.bayReady { color: #8de2d1; }
+.emptyBay { border-style: dashed; background: rgb(11 27 40 / 45%); }
+.emptyBay::before { background: #3a5664; }
+.emptyBayIcon { display: grid; min-height: 110px; place-items: center; color: #6c8d95; font-size: 2.1rem; }
+.emptyBay .bayName { color: #abc3c8; }
+.connectionPreview { border-radius: 3px; }
+.connectionPreview .playerList { display: block; }
+.readySummary { margin-top: 20px; color: #b6d1d0; font-size: .66rem; }
+.readyMeter { height: 7px; border-radius: 0; background: #29434e; }
+.readyMeter span { border-radius: 0; background: #7fdcc9; }
+.actions { margin-top: 20px; }
+.readyButton, .startButton { min-height: 52px; border-radius: 3px; font-size: .84rem; }
+.readyButton { border-color: #57918f; background: #153b43; color: #c6f3e9; }
+.readyButtonActive { background: #235953; color: #effff5; }
+.startButton { background: #efb66b; color: #14222b; }
+.startButton:disabled { background: #354852; color: #a6bbc0; }
+.startHint { color: #a9c3c5; font-size: .68rem; }
+.lobbyChat { min-height: 260px; margin-top: 22px; border: 1px solid #3d5c67; border-radius: 3px; background: #091c27; }
+.lobbyChat input { border-radius: 2px; font-size: .78rem; }
+.lobbyChat p { font-size: .78rem; }
+.footer { min-height: 54px; border-color: #315263; color: #91b5bb; font-size: .62rem; }
+@media (max-width: 1150px) {
+  .content { grid-template-columns: 1fr; gap: 30px; }
+  .intro { max-width: 700px; padding-top: 10px; }
+  .lobbyCard { width: 100%; }
+}
+@media (max-width: 640px) {
+  .frame { width: min(100% - 24px, 520px); }
+  .topbarLocation { display: none; }
+  .content { gap: 24px; padding-block: 32px 36px; }
+  .intro h1 { font-size: clamp(2.9rem, 11vw, 4.6rem); }
+  .description { font-size: .91rem; }
+  .lobbyCard { padding: 17px 12px; }
+  .playerList { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .crewBay { min-height: 205px; }
+  .bayCharacter { min-height: 103px; }
+  .bayCharacter > span:first-child { width: 73px; height: 98px; }
+  .roomCode { font-size: 1.35rem; }
+  .actions { flex-direction: column; }
+}

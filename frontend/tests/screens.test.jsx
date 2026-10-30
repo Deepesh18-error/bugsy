@@ -21,6 +21,7 @@ describe('live screen actions', () => {
     const join = vi.fn();
     render(<WelcomeScreen onCreateRoom={vi.fn()} onJoinRoom={join} onPreview={vi.fn()} />);
     const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: /Join room/ }));
     await user.type(screen.getByLabelText('Your player name'), 'Ada');
     await user.type(screen.getByLabelText('Room code'), 'ABC');
     await user.click(screen.getByRole('button', { name: 'Join' }));
@@ -32,6 +33,7 @@ describe('live screen actions', () => {
     const create = vi.fn().mockResolvedValue(undefined);
     render(<WelcomeScreen onCreateRoom={create} onJoinRoom={vi.fn()} onPreview={vi.fn()} />);
     const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: /Create room/ }));
     await user.type(screen.getByLabelText('Your player name'), 'Ada');
     await user.click(screen.getByRole('radio', { name: 'Apollo Coder' }));
     await user.click(screen.getByRole('button', { name: /Create a room/ }));
@@ -41,6 +43,7 @@ describe('live screen actions', () => {
   it('shows a concise inspiration credit on hover and keeps the chosen credit visible', async () => {
     render(<WelcomeScreen onCreateRoom={vi.fn()} onJoinRoom={vi.fn()} onPreview={vi.fn()} />);
     const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: /Create room/ }));
     await user.hover(screen.getByText('Apollo Coder'));
     expect(document.getElementById('character-credit')).toHaveTextContent('Margaret Hamilton · Led Apollo flight software');
     await user.unhover(screen.getByText('Apollo Coder'));
