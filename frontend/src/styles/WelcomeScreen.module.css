@@ -10,7 +10,7 @@
   font-family: 'Space Mono', 'Cascadia Mono', monospace;
 }
 .rocketStage { --rocket-width: 960px; position: relative; display: grid; place-items: center; width: 100vw; padding: 70px 24px; margin-top: 12px; flex: 1; isolation: isolate; }
-.shipReveal { position: absolute; inset: 0; pointer-events: none; opacity: .78; -webkit-mask-image: radial-gradient(circle 65px at var(--light-x) var(--light-y), #000 0%, rgb(0 0 0 / 70%) 30%, transparent 100%); mask-image: radial-gradient(circle 65px at var(--light-x) var(--light-y), #000 0%, rgb(0 0 0 / 70%) 30%, transparent 100%); }
+.shipReveal { position: absolute; width: calc(var(--rocket-width) * 1.557); height: var(--rocket-width); left: 50%; top: 50%; transform: translate(-50%, -50%); pointer-events: none; -webkit-mask-image: radial-gradient(circle 120px at var(--light-x, -1000px) var(--light-y, -1000px), #000 0%, rgb(0 0 0 / 83%) 48%, transparent 100%); mask-image: radial-gradient(circle 120px at var(--light-x, -1000px) var(--light-y, -1000px), #000 0%, rgb(0 0 0 / 83%) 48%, transparent 100%); }
 .rocketArt { position: absolute; width: var(--rocket-width); max-width: none; height: auto; left: 50%; top: 50%; transform: translate(-50%, -50%) rotate(90deg); }.content { position: relative; z-index: 1; display: flex; min-height: 100vh; flex-direction: column; align-items: center; padding: 18px 18px 22px; }
 .hero { text-align: center; }
 .heroSpark { display: block; margin-bottom: 3px; color: #8fc8e1; font-size: 1rem; opacity: .8; animation: starBreath 4s ease-in-out infinite alternate; }
@@ -60,7 +60,24 @@
   .characterChoice span:last-child { font-size: .45rem; }
 }
 @media (max-width: 380px) { .characterGrid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-/* Temporary placement review: reveal the whole rocket on all input devices. */
-.shipReveal { opacity: 1; -webkit-mask-image: none; mask-image: none; }
-@media (prefers-reduced-motion: reduce) { .spaceDust, .shipSilhouette, .heroSpark, .titleCursor { animation: none; } .primaryButton, .secondaryButton { transition: none; } }
+.page { background-image: radial-gradient(2px 2px at 8% 14%, #d6eeff 95%, transparent), radial-gradient(3px 3px at 88% 18%, #f5cf8e 95%, transparent), radial-gradient(2px 2px at 74% 76%, #d6eeff 95%, transparent), radial-gradient(2px 2px at 18% 78%, #f5cf8e 95%, transparent), radial-gradient(3px 3px at 93% 65%, #d6eeff 95%, transparent), radial-gradient(2px 2px at 27% 43%, #9ed9ef 95%, transparent), radial-gradient(2px 2px at 64% 9%, #f7e6be 95%, transparent), radial-gradient(2px 2px at 41% 85%, #d6eeff 95%, transparent); }
+.content { z-index: 2; }
+.hero, .screenHint { position: relative; z-index: 3; }
+.rocketStage { z-index: 1; animation: shipJiggle 4s ease-in-out infinite; }
+.shipReveal { z-index: -1; }
+.console { left: 26px; }
+.flashlight { position: fixed; inset: 0; z-index: 8; pointer-events: none; background: radial-gradient(circle 120px at var(--page-light-x, -1000px) var(--page-light-y, -1000px), rgb(160 216 255 / 12%), transparent 80%); }
+.spaceDecor { position: absolute; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
+.planet { position: absolute; right: 7%; top: 13%; width: 86px; height: 86px; border: 3px solid #988dcf; border-radius: 50%; background: #464579; box-shadow: inset -18px -13px #28284e, 0 0 22px rgb(121 112 200 / 22%); transform: rotate(-23deg); }
+.planet::after { content: ''; position: absolute; inset: 23px -24px; border: 5px solid #e5ad75; border-radius: 50%; }
+.asteroid { position: absolute; left: 8%; top: 26%; width: 35px; height: 28px; background: #a08d91; clip-path: polygon(20% 0, 75% 5%, 100% 55%, 65% 100%, 5% 78%); box-shadow: inset -6px -5px #5c566d; }
+.asteroid:nth-child(3) { left: auto; right: 14%; top: 77%; transform: scale(.7) rotate(28deg); }
+.star { position: absolute; left: 12%; top: 11%; width: 5px; height: 5px; background: #b7e6f6; box-shadow: 0 -7px #b7e6f6, 0 7px #b7e6f6, -7px 0 #b7e6f6, 7px 0 #b7e6f6; opacity: .75; }
+.star:nth-last-child(3) { left: 78%; top: 8%; transform: scale(.65); }
+.star:nth-last-child(2) { left: 89%; top: 61%; transform: scale(.8); }
+.star:nth-last-child(1) { left: 22%; top: 71%; transform: scale(.55); }
+@keyframes shipJiggle { 50% { transform: translate(2px, -4px) rotate(.2deg); } }
+.enginePulse { position: absolute; left: 1%; top: 49%; width: 15%; height: 8%; background: linear-gradient(90deg, transparent, #e35c20 40%, #ffd04e); clip-path: polygon(0 50%, 35% 0, 100% 25%, 100% 75%, 35% 100%); transform-origin: right center; animation: thrust 1.1s ease-in-out infinite alternate; }
+@keyframes thrust { to { transform: scaleX(.78); opacity: .58; } }
+@media (prefers-reduced-motion: reduce) { .rocketStage, .enginePulse, .heroSpark, .titleCursor { animation: none; } .primaryButton, .secondaryButton { transition: none; } }
 

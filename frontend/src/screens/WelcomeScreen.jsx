@@ -15,6 +15,8 @@ export default function WelcomeScreen({ onCreateRoom, onJoinRoom, onPreview, res
   const [isSubmitting, setIsSubmitting] = useState(false);
   const sceneRef = useRef(null);
   const consoleRef = useRef(null);
+  const revealRef = useRef(null);
+  const pageRef = useRef(null);
 
   useLayoutEffect(() => {
     const fitHatch = () => {
@@ -33,10 +35,19 @@ export default function WelcomeScreen({ onCreateRoom, onJoinRoom, onPreview, res
   }, []);
 
   function moveLight(event) {
-    if (event.pointerType === 'touch' || !sceneRef.current) return;
-    const bounds = sceneRef.current.getBoundingClientRect();
-    sceneRef.current.style.setProperty('--light-x', `${event.clientX - bounds.left}px`);
-    sceneRef.current.style.setProperty('--light-y', `${event.clientY - bounds.top}px`);
+    if (event.pointerType === 'touch' || !revealRef.current || !pageRef.current) return;
+    const bounds = revealRef.current.getBoundingClientRect();
+    revealRef.current.style.setProperty('--light-x', `${event.clientX - bounds.left}px`);
+    revealRef.current.style.setProperty('--light-y', `${event.clientY - bounds.top}px`);
+    pageRef.current.style.setProperty('--page-light-x', `${event.clientX}px`);
+    pageRef.current.style.setProperty('--page-light-y', `${event.clientY}px`);
+  }
+
+  function hideLight() {
+    revealRef.current?.style.setProperty('--light-x', '-1000px');
+    revealRef.current?.style.setProperty('--light-y', '-1000px');
+    pageRef.current?.style.setProperty('--page-light-x', '-1000px');
+    pageRef.current?.style.setProperty('--page-light-y', '-1000px');
   }
 
   function chooseMode(nextMode) {
@@ -69,18 +80,15 @@ export default function WelcomeScreen({ onCreateRoom, onJoinRoom, onPreview, res
   }
 
   return (
-    <main className={styles.page}>
+    <main className={styles.page} ref={pageRef} onPointerMove={moveLight} onPointerLeave={hideLight}>
       <div className={styles.content}>
         <header className={styles.hero}>
           <span className={styles.heroSpark} aria-hidden="true">✦</span>
           <h1>BUGSY<span className={styles.titleCursor} aria-hidden="true">_</span></h1>
           <p>FIX BUGS. FIND THE IMPOSTOR.</p>
         </header>
-        <div className={styles.rocketStage} onPointerMove={moveLight} onPointerLeave={() => {
-          sceneRef.current?.style.setProperty('--light-x', '-1000px');
-          sceneRef.current?.style.setProperty('--light-y', '-1000px');
-        }} ref={sceneRef}>
-        <div className={styles.shipReveal} aria-hidden="true"><img className={styles.rocketArt} src="/scenes/bugsy-pod.svg" alt="" /></div>
+        <div className={styles.rocketStage} ref={sceneRef}>
+        <div className={styles.shipReveal} aria-hidden="true" ref={revealRef}><img className={styles.rocketArt} src="/scenes/bugsy-pod.svg" alt="" /><span className={styles.enginePulse} /></div>
         <section className={styles.console} aria-label="Start playing" ref={consoleRef}>
           <div className={styles.consoleTop}><span>CREW CONSOLE</span><span className={styles.onlineLight} aria-hidden="true" /></div>
           {restoreError && <p className={styles.error} role="alert">{restoreError} {canRetryResume && <button type="button" onClick={onRetryResume}>Reconnect</button>}</p>}
@@ -132,6 +140,8 @@ export default function WelcomeScreen({ onCreateRoom, onJoinRoom, onPreview, res
         </div>
         <p className={styles.screenHint}>4–5 PLAYERS <span aria-hidden="true">·</span> ONE HIDDEN IMPOSTOR</p>
       </div>
+      <div className={styles.spaceDecor} aria-hidden="true"><span className={styles.planet} /><span className={styles.asteroid} /><span className={styles.asteroid} /><span className={styles.star} /><span className={styles.star} /><span className={styles.star} /><span className={styles.star} /></div>
+      <div className={styles.flashlight} aria-hidden="true" />
     </main>
   );
 }
