@@ -267,7 +267,7 @@ export default function LiveArena({ room, role, categoryName, roundNumber, total
   return (
     <main className={styles.page}>
       <header className={styles.topbar}>
-        <span className={styles.brand}><span className={styles.brandMark} aria-hidden="true">CM</span> codemafia</span>
+        <span className={styles.brand}><span className={styles.brandMark} aria-hidden="true">B</span> BUGSY</span>
         <div className={styles.roundMeta}>ROUND {roundNumber}/{totalRounds} · {categoryName}</div>
         <div className={`${styles.timer} ${secondsLeft <= 15 ? styles.timerLow : ''}`} role="timer" aria-live="off" aria-label={`${formatTime(secondsLeft)} remaining`}>
           <span className={styles.timerLabel}>TIME LEFT</span><strong>{formatTime(secondsLeft)}</strong>
@@ -278,18 +278,18 @@ export default function LiveArena({ room, role, categoryName, roundNumber, total
         </span>
         <div className={styles.roomCode}><span>ROOM</span><strong>{room.code}</strong></div>
       </header>
-      <div className={styles.layout}>
-        <section className={styles.challengePanel} aria-labelledby="live-challenge-title">
+      <div className={`${styles.layout} ${styles.gameLayout}`}>
+        <section className={styles.challengePanel} aria-labelledby="live-challenge-title" tabIndex={0}>
           <p className={styles.eyebrow}>THE CHALLENGE</p>
           <h1 id="live-challenge-title">{session?.challenge.title || 'Loading challenge…'}</h1>
           <p className={styles.challengeSummary}>{session?.challenge.prompt}</p>
+          {!ownPlayer?.isAlive && <p className={styles.spectatorNotice} role="status">SPECTATOR MODE · Your crew continues the match. You can watch, but cannot edit, chat, test, or vote.</p>}
           <section className={styles.objectiveCard} aria-label="Your role">
             <span className={`${styles.roleDot} ${role === 'impostor' ? styles.impostorDot : ''}`} aria-hidden="true" />
             <div><p className={styles.eyebrow}>YOUR ROLE</p><strong>{role === 'impostor' ? 'Impostor' : role === 'civilian' ? 'Civilian' : 'Waiting for role…'}</strong></div>
           </section>
           {role === 'impostor' && <SabotageObjectives objectives={ownObjectives} credits={sabotageCredits}
             cooldownSeconds={timeLeft(sabotageCooldownUntil)} />}
-          <p className={styles.challengeSummary}>Sabotage can win only at the round deadline, after at least 30 seconds to respond. Editing or restoring the code clears its current verification. Repair and rerun tests, or call a meeting.</p>
           <TestResults bundle={feedbackBundle} bundleError={bundleError}
             browserFeedbackEnabled={BROWSER_FEEDBACK_ENABLED && !isCpp}
             provisional={provisional} official={displayedOfficialResult}
@@ -302,21 +302,6 @@ export default function LiveArena({ room, role, categoryName, roundNumber, total
             canFinalize={connectionStatus === 'connected' && ownPlayer?.isAlive && secondsLeft > 0}
             onFinalize={handleFinalize} isFinalizing={finalizing} />
           {finalizeError && <StatusMessage status="error">{finalizeError}</StatusMessage>}
-          <button className={styles.meetingButton} type="button" onClick={handleCallMeeting}
-            disabled={meetingBusy || ownMeetingsUsed > 0 || !ownPlayer?.isAlive
-              || cooldownSeconds > 0 || secondsLeft === 0 || connectionStatus !== 'connected'}>
-            {meetingBusy ? 'Calling meeting…' : ownMeetingsUsed > 0 ? 'Meeting already used'
-              : cooldownSeconds > 0 ? `Meeting cooldown · ${formatTime(cooldownSeconds)}`
-                : !ownPlayer?.isAlive ? 'Eliminated players cannot call meetings'
-                  : connectionStatus !== 'connected' ? 'Reconnect to call a meeting'
-                    : 'Call emergency meeting'}
-          </button>
-          <p className={styles.meetingAvailability}>
-            {ownMeetingsUsed > 0 ? 'You have used your one meeting for this match.'
-              : cooldownSeconds > 0 ? 'A room-wide cooldown is active.'
-                : 'One meeting per player; the call pauses the coding timer for discussion and voting.'}
-          </p>
-          {meetingError && <StatusMessage status="error">{meetingError}</StatusMessage>}
           <div className={styles.liveHistory}>
             <h2>Revision history</h2>
             <p>Current revision: <code>{revisionId || 'Waiting for server…'}</code></p>
@@ -337,7 +322,17 @@ export default function LiveArena({ room, role, categoryName, roundNumber, total
             )}
           </div>
         </section>
-        <section className={styles.editorPanel} aria-labelledby="live-editor-title">
+        <div className={styles.arenaStage}>
+          <section className={styles.playersPanel} aria-labelledby="arena-players-title">
+            <div className={styles.crewHeading}>
+              <div><p className={styles.eyebrow}>IN THIS ROOM</p><h2 id="arena-players-title">Crew</h2></div>
+              <span>{room.players.filter((player) => player.isAlive !== false).length} active</span>
+            </div>
+            <ul className={styles.playerList}>{room.players.map((player) =>
+              <PlayerCard className={styles.playerRow} key={player.id} player={player} spriteState="coding" variant="compact" />)}</ul>
+          </section>
+          <div className={styles.workArea}>
+            <section className={styles.editorPanel} aria-labelledby="live-editor-title">
           <div className={styles.editorHeader}>
             <div><p className={styles.eyebrow}>SHARED WORKSPACE · LIVE</p><h2 id="live-editor-title">{isCpp ? 'challenge.cpp' : 'challenge.py'}</h2></div>
             <span className={styles.languageBadge}>{isCpp ? 'C++20' : 'PYTHON'}</span>
@@ -354,27 +349,40 @@ export default function LiveArena({ room, role, categoryName, roundNumber, total
             {session && <CodeEditor sharedText={editor.sharedText} awareness={editor.awareness}
               language={session.challenge.language} label={isCpp ? 'Shared C++ code' : 'Shared Python code'}
               canEdit={editor.canEdit && connectionStatus === 'connected' && secondsLeft > 0}
-              preferAccessibleEditor={accessibleMode} />}
+              preferAccessibleEditor={accessibleMode} fillHeight />}
           </Suspense>
           <div className={styles.editorFooter}>
             <span><span className={styles.statusDot} aria-hidden="true" /> {editor.status === 'synced' ? 'Shared document synced' : 'Waiting for shared document'}</span>
             <span>{collaborators.length} collaborator{collaborators.length === 1 ? '' : 's'} online</span>
           </div>
           {collaborators.length > 0 && <p className={styles.collaborators}>Editing with {collaborators.join(', ')}</p>}
-        </section>
-        <aside className={styles.sideColumn} aria-label="Room players and chat">
-          <section className={styles.playersPanel}>
-            <p className={styles.eyebrow}>IN THIS ROOM</p><h2>Players</h2>
-            <ul className={styles.playerList}>{room.players.map((player) =>
-              <PlayerCard className={styles.playerRow} key={player.id} player={player} spriteState="coding" variant="compact" />)}</ul>
-          </section>
+            </section>
+            <aside className={styles.sideColumn} aria-label="Meeting and room chat">
+              <section className={styles.meetingPanel} aria-label="Emergency meeting">
+                <p className={styles.eyebrow}>EMERGENCY</p>
+                <button className={styles.meetingButton} type="button" onClick={handleCallMeeting}
+                  disabled={meetingBusy || ownMeetingsUsed > 0 || !ownPlayer?.isAlive
+                    || cooldownSeconds > 0 || secondsLeft === 0 || connectionStatus !== 'connected'}>
+                  {meetingBusy ? 'Calling meeting…' : ownMeetingsUsed > 0 ? 'Meeting already used'
+                    : cooldownSeconds > 0 ? `Meeting cooldown · ${formatTime(cooldownSeconds)}`
+                      : !ownPlayer?.isAlive ? 'Eliminated players cannot call meetings'
+                        : connectionStatus !== 'connected' ? 'Reconnect to call a meeting'
+                          : 'Call emergency meeting'}
+                </button>
+                <p className={styles.meetingAvailability}>
+                  {ownMeetingsUsed > 0 ? 'Your meeting has been used.'
+                    : cooldownSeconds > 0 ? 'Room-wide cooldown active.'
+                      : 'One call per player. Pauses the round for discussion.'}
+                </p>
+                {meetingError && <StatusMessage status="error">{meetingError}</StatusMessage>}
+              </section>
           <ChatPanel
             className={styles.liveChat}
             messages={chatMessages}
             onSendMessage={onSendChat}
             isLive
             maxLength={500}
-            title="Room chat"
+            title="Crew terminal"
             emptyMessage="No room messages yet. Start the conversation."
             messageStatus={connectionStatus === 'connected' ? 'Messages are saved by the room server.' : 'Reconnecting before chat can send…'}
             disabled={!canSendChat}
@@ -382,7 +390,9 @@ export default function LiveArena({ room, role, categoryName, roundNumber, total
               ? 'Reconnect before sending a message.'
               : !ownPlayer?.isAlive ? 'Eliminated players can read chat but cannot send.' : ''}
           />
-        </aside>
+            </aside>
+          </div>
+        </div>
       </div>
       {secondsLeft === 0 && <div className={styles.timeUpBanner} role="status">Round deadline reached. Waiting for server result…</div>}
     </main>

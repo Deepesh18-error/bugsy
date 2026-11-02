@@ -192,11 +192,11 @@ async function request(path, options = {}) {
   return requireRoomSnapshot(payload?.room);
 }
 
-export function createRoom(displayName, avatarId = DEFAULT_CHARACTER_ID) {
+export function createRoom(displayName, avatarId = null) {
   return request('', { body: { display_name: displayName, avatar_id: avatarId, capacity: 5 } });
 }
 
-export function joinRoom(displayName, roomCode, avatarId = DEFAULT_CHARACTER_ID) {
+export function joinRoom(displayName, roomCode, avatarId = null) {
   return request('/join', { body: { display_name: displayName, room_code: roomCode, avatar_id: avatarId } });
 }
 

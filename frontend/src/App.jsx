@@ -23,6 +23,7 @@ import RoleRevealScreen from './screens/RoleRevealScreen.jsx';
 import StatusMessage from './components/StatusMessage.jsx';
 import VoteScreen from './screens/VoteScreen.jsx';
 import WelcomeScreen from './screens/WelcomeScreen.jsx';
+import recoveryStyles from './styles/SessionRecovery.module.css';
 
 // StrictMode replays mount effects in development. Reuse the same rotating
 // credential request so two simultaneous resumes cannot invalidate each other.
@@ -752,15 +753,15 @@ export default function App() {
     if (liveSocket.status !== 'connected') {
       const sessionEnded = liveSocket.status === 'expired';
       return (
-        <main style={{ maxWidth: 560, margin: '4rem auto', padding: '1.5rem' }}>
+        <main className={recoveryStyles.page}>
           <h1>{sessionEnded ? 'Room session ended' : 'Restoring your match'}</h1>
           <StatusMessage status={sessionEnded || liveSocket.status === 'error' ? 'error' : 'reconnecting'}>
             {liveSocket.error || (liveSocket.status === 'synchronizing'
               ? 'Checking the latest room state…'
               : 'Reconnecting and loading the current round…')}
           </StatusMessage>
-          {liveSocket.status === 'error' && <button type="button" onClick={liveSocket.retryConnection}>Try reconnecting</button>}
-          {sessionEnded && <button type="button" onClick={resetToWelcome}>Return to welcome</button>}
+          {liveSocket.status === 'error' && <button className={recoveryStyles.action} type="button" onClick={liveSocket.retryConnection}>Try reconnecting</button>}
+          {sessionEnded && <button className={recoveryStyles.action} type="button" onClick={resetToWelcome}>Return to welcome</button>}
         </main>
       );
     }
@@ -775,7 +776,9 @@ export default function App() {
       && ((phase === 'game_over' && liveRoomSnapshot?.match_result?.reason === 'impostor_ejected')
         || (phase === 'coding_round' && Date.now() - Date.parse(resolvedVote.resolved_at) < 20_000));
 
-    if (phase === 'category_vote' || (phase === 'role_reveal' && liveResult)) {
+    // The server's role-reveal phase is timed. Do not hold players on the
+    // category result behind a manual click while that private phase expires.
+    if (phase === 'category_vote') {
       return (
         <CategoryVoteScreen
           categories={liveCategories}
@@ -784,8 +787,6 @@ export default function App() {
           selectedCategoryId={liveRoomSnapshot?.own_category_vote_id ?? null}
           result={liveResult}
           onVote={handleLiveCategoryVote}
-          onContinue={() => setLiveCategoryResult(null)}
-          canContinue={phase === 'role_reveal' && Boolean(liveRoomSnapshot?.own_role)}
           isLive
           isSubmitting={isCategorySubmitting}
           isDisabled={liveSocket.status !== 'connected'}
@@ -901,11 +902,12 @@ export default function App() {
 
     if (phase !== 'lobby') {
       return (
-        <main style={{ maxWidth: 720, margin: '4rem auto', padding: '1.5rem' }}>
-          <h1>Live match</h1>
+        <main className={recoveryStyles.page}>
+          <h1>Syncing match</h1>
           <StatusMessage status="info">
-            The server is in the {phase.replaceAll('_', ' ')} phase. This screen will be connected in a later phase.
+            Updating the {phase.replaceAll('_', ' ')} phase…
           </StatusMessage>
+          <button className={recoveryStyles.action} type="button" onClick={liveSocket.requestSnapshot}>Refresh room state</button>
         </main>
       );
     }

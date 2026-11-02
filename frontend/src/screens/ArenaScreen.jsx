@@ -84,8 +84,8 @@ function PreviewArena({
     <main className={styles.page}>
       <header className={styles.topbar}>
         <a className={styles.brand} href="#arena">
-          <span className={styles.brandMark} aria-hidden="true">CM</span>
-          <span>codemafia</span>
+          <span className={styles.brandMark} aria-hidden="true">B</span>
+          <span>BUGSY</span>
         </a>
         <div className={styles.roundMeta}>
           <span>ROUND {roundNumber}/{totalRounds}</span>
@@ -99,8 +99,8 @@ function PreviewArena({
         <div className={styles.roomCode}><span>ROOM</span><strong>{room.code}</strong></div>
       </header>
 
-      <div className={styles.layout} id="arena">
-        <section className={styles.challengePanel} aria-labelledby="challenge-title">
+      <div className={`${styles.layout} ${styles.gameLayout}`} id="arena">
+        <section className={styles.challengePanel} aria-labelledby="challenge-title" tabIndex={0}>
           <div className={styles.panelHeading}>
             <div>
               <p className={styles.eyebrow}>THE CHALLENGE</p>
@@ -164,19 +164,22 @@ function PreviewArena({
             </div>
             <p>{role === 'impostor' ? 'Blend in while steering the code off course.' : 'Work together to repair the challenge.'}</p>
           </section>
-          <button
-            className={styles.meetingButton}
-            onClick={onCallMeeting}
-            type="button"
-            disabled={!meetingAvailable || secondsLeft === 0}
-          >
-            <span aria-hidden="true">!</span>
-            {meetingAvailable ? 'Call emergency meeting' : 'Meeting already used'}
-          </button>
-          <p className={styles.mockNote}>One local preview meeting per player each match.</p>
         </section>
 
-        <section className={styles.editorPanel} aria-labelledby="editor-title">
+        <div className={styles.arenaStage}>
+          <section className={styles.playersPanel} aria-labelledby="players-title">
+            <div className={styles.crewHeading}>
+              <div><p className={styles.eyebrow}>IN THIS ROOM</p><h2 id="players-title">Crew</h2></div>
+              <span>{room.players.length}/{room.capacity}</span>
+            </div>
+            <ul className={styles.playerList}>
+              {room.players.map((player) => (
+                <PlayerCard className={styles.playerRow} key={player.id} player={player} spriteState="coding" variant="compact" />
+              ))}
+            </ul>
+          </section>
+          <div className={styles.workArea}>
+            <section className={styles.editorPanel} aria-labelledby="editor-title">
           <div className={styles.editorHeader}>
             <div>
               <p className={styles.eyebrow}>SHARED WORKSPACE · PREVIEW</p>
@@ -200,33 +203,27 @@ function PreviewArena({
             <span>{code.split('\n').length} lines</span>
           </div>
           <p className={styles.editorNote}>This preview is local only. Create a live room for shared editing and official checks.</p>
-        </section>
-
-        <aside className={styles.sideColumn} aria-label="Players and chat">
-          <section className={styles.playersPanel} aria-labelledby="players-title">
-            <div className={styles.sectionHeading}>
-              <div>
-                <p className={styles.eyebrow}>IN THIS ROOM</p>
-                <h2 id="players-title">Players</h2>
-              </div>
-              <span className={styles.testCount}>{room.players.length}/{room.capacity}</span>
-            </div>
-            <ul className={styles.playerList}>
-              {room.players.map((player) => (
-                <PlayerCard className={styles.playerRow} key={player.id} player={player} spriteState="coding" variant="compact" />
-              ))}
-            </ul>
-          </section>
-
-          <ChatPanel
+            </section>
+            <aside className={styles.sideColumn} aria-label="Meeting and room chat">
+              <section className={styles.meetingPanel} aria-label="Emergency meeting">
+                <p className={styles.eyebrow}>EMERGENCY</p>
+                <button className={styles.meetingButton} onClick={onCallMeeting} type="button"
+                  disabled={!meetingAvailable || secondsLeft === 0}>
+                  {meetingAvailable ? 'Call emergency meeting' : 'Meeting already used'}
+                </button>
+                <p className={styles.meetingAvailability}>One local preview meeting per player.</p>
+              </section>
+              <ChatPanel
             className={styles.chatPanel}
             emptyMessage="No messages yet. Start the team conversation."
             localLabel="Messages stay in this browser preview."
             messages={chatMessages}
             onSendMessage={handleSendChat}
             placeholder="Message your team..."
-          />
-        </aside>
+              />
+            </aside>
+          </div>
+        </div>
       </div>
 
       {secondsLeft === 0 && (

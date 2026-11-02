@@ -57,7 +57,7 @@ export default function MeetingScreen({ room, categoryName, roundNumber, onProce
         <header className={styles.topbar}>
           <a className={styles.brand} href="#meeting">
             <span className={styles.brandMark} aria-hidden="true">CM</span>
-            <span>codemafia</span>
+            <span>BUGSY</span>
           </a>
           <div className={styles.roomMeta}>
             <span>ROOM</span>
@@ -68,18 +68,18 @@ export default function MeetingScreen({ room, categoryName, roundNumber, onProce
         <section className={styles.content} id="meeting">
           <div className={styles.heading}>
             <p className={styles.eyebrow}><span aria-hidden="true">!</span> EMERGENCY MEETING · ROUND {roundNumber}</p>
-            <h1>Pause the code.<br /><span>Compare what you saw.</span></h1>
-            <p className={styles.intro}>
-              Discuss the edits and test behavior together. A failing test can come from an honest mistake; evidence is not proof of intent.
-            </p>
+            <h1>EMERGENCY<br /><span>MEETING</span></h1>
+            <p className={styles.intro}>Discuss the code. Then vote.</p>
           </div>
 
+          {room.players.find((player) => player.id === room.currentPlayerId)?.isAlive === false &&
+            <p className={styles.spectatorNotice} role="status">SPECTATOR MODE · Follow the discussion. Ejected players cannot send messages or vote.</p>}
           <div className={styles.meetingGrid}>
             <section className={styles.discussionPanel} aria-labelledby="discussion-title">
               <div className={styles.panelHeader}>
                 <div>
                   <p className={styles.panelEyebrow}>OPEN DISCUSSION</p>
-                  <h2 id="discussion-title">What happened?</h2>
+                  <h2 id="discussion-title">Crew channel</h2>
                 </div>
                 <div className={`${styles.timer} ${timerIsLow ? styles.timerLow : ''}`} role="timer" aria-live="off" aria-label={`${formatTime(secondsLeft)} discussion time remaining`}>
                   <span>DISCUSSION</span>
@@ -95,7 +95,6 @@ export default function MeetingScreen({ room, categoryName, roundNumber, onProce
                 <div>
                   <p className={styles.panelEyebrow}>CURRENT ROUND</p>
                   <strong>{categoryName}</strong>
-                  <p>Players can share observations before the group moves on.</p>
                 </div>
               </div>
 
@@ -123,7 +122,7 @@ export default function MeetingScreen({ room, categoryName, roundNumber, onProce
               <div className={styles.panelHeader}>
                 <div>
                   <p className={styles.panelEyebrow}>ROOM ROSTER</p>
-                  <h2 id="roster-title">Players here</h2>
+                  <h2 id="roster-title">Crew present</h2>
                 </div>
                 <span className={styles.playerCount}>{room.players.length}</span>
               </div>
@@ -133,10 +132,7 @@ export default function MeetingScreen({ room, categoryName, roundNumber, onProce
                 ))}
               </ul>
 
-              <div className={styles.guideline}>
-                <span aria-hidden="true">◎</span>
-                <p>Talk about observable code changes and test results. The meeting does not identify who made a harmful edit.</p>
-              </div>
+              <div className={styles.guideline}><span aria-hidden="true">◎</span><p>Look for evidence in edits and tests.</p></div>
 
               {isLive ? <p className={styles.previewNote} role="status">
                 Voting opens automatically when the server discussion deadline arrives.
@@ -160,7 +156,7 @@ export default function MeetingScreen({ room, categoryName, roundNumber, onProce
 
         <footer className={styles.footer}>
           <span>DISCUSS THE EVIDENCE. DO NOT ASSUME INTENT.</span>
-          <span>CODEMAFIA · {isLive ? 'LIVE ROOM' : 'LOCAL PREVIEW'}</span>
+          <span>BUGSY · {isLive ? 'LIVE ROOM' : 'LOCAL PREVIEW'}</span>
         </footer>
       </div>
     </main>

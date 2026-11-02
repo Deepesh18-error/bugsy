@@ -25,3 +25,22 @@
   .panel { min-height: 260px; }
   .messages { min-height: 80px; }
 }
+
+/* One terminal chat treatment for lobby, arena, and emergency discussion. */
+.panel { border: 1px solid #756387; border-radius: 7px; background: #090b0d; color: #e7e9dd; font-family: 'Space Mono', monospace; }
+.header { padding-bottom: 10px; border-bottom: 1px solid #5a4d67; }
+.eyebrow { color: #c4a8dc; font-size: .62rem; }
+.header h2 { color: #eee7f3; font: 700 1.25rem 'Pixelify Sans', monospace; }
+.localTag { color: #b9adbe; }
+.messages { gap: 7px; }
+.message { padding: 5px 8px; border-left: 2px solid #756387; background: #141219; }
+.message::before { margin-right: 5px; color: #a7d2a0; content: '>'; }
+.messageName { font-size: .7rem; }
+.sentAt { color: #a59aae; }
+.message p { margin-left: 14px; color: #e1dce5; font: .72rem/1.5 'Space Mono', monospace; }
+.emptyState { color: #b8acbb; }
+.emptyState > span { color: #c4a8dc; }
+.form input { border-color: #7b668d; border-radius: 4px; background: #0d0c13; color: #f0e9f3; font: .76rem 'Space Mono', monospace; }
+.form input::placeholder { color: #ada1b3; }
+.form button { border: 1px solid #a6d9a7; border-radius: 4px; background: #a6d9a7; color: #15241a; font: 700 .74rem 'Space Mono', monospace; }
+.notice { color: #bbaec0; }

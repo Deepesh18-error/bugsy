@@ -22,7 +22,7 @@ from app.rooms.identity import (
     normalize_display_name,
     normalize_room_code,
 )
-from app.rooms.avatars import DEFAULT_AVATAR_ID, validate_avatar_id
+from app.rooms.avatars import DEFAULT_AVATAR_ID, available_avatar_id, validate_avatar_id
 from app.rooms.repository import GuestSession, RoomRepository
 
 
@@ -118,9 +118,9 @@ class RoomService:
             ),
         )
 
-    async def create_room(self, display_name: str, capacity: int = 5, avatar_id: str = DEFAULT_AVATAR_ID) -> GuestResult:
+    async def create_room(self, display_name: str, capacity: int = 5, avatar_id: str | None = None) -> GuestResult:
         name = normalize_display_name(display_name)
-        avatar_id = validate_avatar_id(avatar_id)
+        avatar_id = validate_avatar_id(avatar_id) if avatar_id is not None else DEFAULT_AVATAR_ID
         if capacity not in (4, 5):
             raise RoomServiceError("INVALID_CAPACITY", "Capacity must be four or five.", 422)
         now = self._now()
@@ -142,7 +142,7 @@ class RoomService:
         raise RoomServiceError("ROOM_ALLOCATION_FAILED", "Could not allocate a room.", 503)
 
     async def join_room(
-        self, room_code: str, display_name: str, *, join_subject: str, avatar_id: str = DEFAULT_AVATAR_ID
+        self, room_code: str, display_name: str, *, join_subject: str, avatar_id: str | None = None
     ) -> GuestResult:
         subject_hash = hashlib.sha256(join_subject.encode("utf-8")).hexdigest()
         allowed = await self._repository.allow_join_attempt(
@@ -156,7 +156,7 @@ class RoomService:
         if code is None:
             raise _unavailable()
         name = normalize_display_name(display_name)
-        avatar_id = validate_avatar_id(avatar_id)
+        avatar_id = validate_avatar_id(avatar_id) if avatar_id is not None else None
         for _ in range(5):
             stored = await self._repository.load_room(code)
             now = self._now()
@@ -173,11 +173,15 @@ class RoomService:
                 raise RoomServiceError("ROOM_FULL", "Room is full.", 409)
             if any(display_name_key(player.display_name) == name.casefold() for player in active):
                 raise RoomServiceError("NAME_TAKEN", "Choose another name in this room.", 409)
+            used_avatars = {player.avatar_id for player in active}
+            if avatar_id is not None and avatar_id in used_avatars:
+                raise RoomServiceError("CHARACTER_TAKEN", "That character is already in this room. Choose another or use automatic selection.", 409)
+            assigned_avatar_id = avatar_id or available_avatar_id(used_avatars)
             player_id = new_player_id()
             while any(item.player_id == player_id for item in room.players):
                 player_id = new_player_id()
             updated = replace(room, players=(*room.players, PlayerState(
-                player_id=player_id, display_name=name, joined_at=now, avatar_id=avatar_id,
+                player_id=player_id, display_name=name, joined_at=now, avatar_id=assigned_avatar_id,
             )))
             credential = new_reconnect_credential()
             session = self._session(updated, player_id, credential, now)

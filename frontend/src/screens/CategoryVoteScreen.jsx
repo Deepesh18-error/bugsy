@@ -25,48 +25,46 @@ export default function CategoryVoteScreen({
   const voteState = winningCategory
     ? 'resolved'
     : selectedCategory ? 'voted' : isSubmitting ? 'pending' : 'open';
+  const voteStatus = status === 'error' && statusMessage
+    ? statusMessage
+    : winningCategory
+      ? canContinue ? 'Mission selected. Your role is ready.' : 'Mission selected. Preparing roles…'
+      : isSubmitting ? 'Sending vote…' : selectedCategory
+        ? 'Vote locked. Waiting for crew…' : isDisabled
+          ? 'Reconnecting to crew…' : 'Choose one mission. Your vote locks in.';
 
   return (
     <main className={styles.page}>
+      <div className={styles.stars} aria-hidden="true" />
+      <div className={styles.planet} aria-hidden="true" />
+      <div className={styles.orbit} aria-hidden="true" />
+      <div className={styles.asteroid} aria-hidden="true" />
+      <div className={styles.ship} aria-hidden="true"><div className={styles.shipWing} /><div className={styles.shipBody} /><div className={styles.shipEngine} /></div>
       <div className={styles.frame}>
         <header className={styles.topbar}>
           <a className={styles.brand} href="#category-vote">
-            <span className={styles.brandMark} aria-hidden="true">CM</span>
-            <span>codemafia</span>
+            <span>BUGSY<span className={styles.brandCursor}>_</span></span>
           </a>
           <div className={styles.matchMeta}>
-            <span>ROOM</span>
-            <strong>{roomCode}</strong>
+            <strong>ROOM {roomCode}</strong>
           </div>
         </header>
 
         <section className={styles.content} id="category-vote">
           <div className={styles.heading}>
             <p className={styles.kicker}>
-              <span className={styles.kickerDot} aria-hidden="true" />
-              Match setup · step 1 of 2
+              CREW BALLOT / 01
             </p>
-            <h1>Choose your<br /><span>debugging ground.</span></h1>
-            <p className={styles.description}>
-              Your crew will tackle challenges from one shared category. Cast
-              your vote, then see where the group lands.
-            </p>
-            {isLive && deadlineAt && voteState !== 'resolved' && (
-              <p className={styles.description}>
-                Voting closes at <time dateTime={deadlineAt}>
-                  {new Date(deadlineAt).toLocaleTimeString()}
-                </time> (server deadline).
-              </p>
-            )}
+            <h1>Choose the mission<span>.</span></h1>
           </div>
 
           <section className={styles.votePanel} aria-labelledby="vote-title">
             <div className={styles.panelHeader}>
-              <div>
-                <p className={styles.panelEyebrow}>ONE VOTE · LOCKS AFTER CASTING</p>
-                <h2 id="vote-title">Pick a category</h2>
-              </div>
-              <span className={styles.ballotMark} aria-hidden="true">01</span>
+              <span className={styles.consoleLight} aria-hidden="true" />
+              <h2 id="vote-title">MISSION SELECTOR</h2>
+              <span className={styles.deadline}>{deadlineAt && !result
+                ? <>CLOSES <time dateTime={deadlineAt}>{new Date(deadlineAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time></>
+                : 'ONE VOTE'}</span>
             </div>
 
             <div className={styles.categoryGrid}>
@@ -84,16 +82,14 @@ export default function CategoryVoteScreen({
                     type="button"
                   >
                     <span className={styles.categoryIndex} aria-hidden="true">
-                      {String(index + 1).padStart(2, '0')}
+                      {['{ }', '</>', '++', '✦'][index % 4]}
                     </span>
                     <span className={styles.categoryCopy}>
                       <span className={styles.categoryName}>{category.name}</span>
-                      <span className={styles.categoryDescription}>{category.description}</span>
                     </span>
                     {(!isLive || voteState === 'resolved') && (
                       <span className={styles.voteCount}>
-                        <strong>{voteCounts[category.id] ?? 0}</strong>
-                        <span>{(voteCounts[category.id] ?? 0) === 1 ? 'vote' : 'votes'}</span>
+                        <strong>{voteCounts[category.id] ?? 0}</strong> {(voteCounts[category.id] ?? 0) === 1 ? 'vote' : 'votes'}
                       </span>
                     )}
                     {isSelected && <span className={styles.selectionMark} aria-hidden="true">✓</span>}
@@ -103,68 +99,18 @@ export default function CategoryVoteScreen({
               })}
             </div>
 
-            <div className={styles.voteStatus} aria-live="polite" role={status === 'error' ? 'alert' : 'status'}>
-              {result && winningCategory ? (
-                <>
-                  <span className={styles.statusIcon} aria-hidden="true">✓</span>
-                  <div>
-                    <strong>{winningCategory.name} is selected for this match.</strong>
-                    <p>
-                      {isLive
-                        ? !canContinue
-                          ? 'The category is final. Waiting for your private role snapshot.'
-                          : result.usedFallback
-                            ? 'The server resolved a tie or chose a category because no votes were cast.'
-                            : 'The server counted the final ballots. Your role is ready to reveal.'
-                        : result.wasTie
-                          ? 'The preview used a repeatable room-code tie-break. The server will resolve real votes.'
-                          : 'Your vote is locked. The preview ballots are complete.'}
-                    </p>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <span className={styles.statusIconWaiting} aria-hidden="true">↗</span>
-                  <div>
-                    <strong>{voteState === 'voted'
-                      ? 'Vote recorded.'
-                      : status === 'error'
-                        ? 'Your vote needs attention.'
-                        : voteState === 'pending' ? 'Recording your vote…' : 'Your vote is still open.'}</strong>
-                    <p>
-                      {statusMessage || (selectedCategory
-                        ? `${selectedCategory.name} is your choice. Waiting for the group vote to resolve.`
-                        : 'Choose one category. You cannot change it after voting.')}
-                    </p>
-                  </div>
-                </>
-              )}
-            </div>
+            <div className={styles.voteStatus} aria-live="polite" role={status === 'error' ? 'alert' : 'status'}><span aria-hidden="true">{winningCategory ? '✦' : selectedCategory ? '✓' : '◉'}</span><strong>{voteStatus}</strong></div>
 
-            {result && winningCategory && (
+            {!isLive && result && winningCategory && (
               <button className={styles.continueButton} disabled={!canContinue} onClick={onContinue} type="button">
-                {isLive ? 'View my private role' : 'Reveal my role'} <span aria-hidden="true">→</span>
+                Reveal role <span aria-hidden="true">→</span>
               </button>
             )}
 
-            {isLive ? (
-              <p className={styles.previewNote}>
-                {voteState === 'resolved'
-                  ? 'Final vote totals came from the server. Individual ballots remain private.'
-                  : 'Individual ballots remain private. Your saved vote will reappear after refresh.'}
-              </p>
-            ) : (
-              <p className={styles.previewNote}>
-                This preview includes three simulated player votes. Vote counts and the result are local demo data.
-              </p>
-            )}
+            {!isLive && <p className={styles.previewNote}>LOCAL PREVIEW · SIMULATED CREW VOTES</p>}
           </section>
         </section>
 
-        <footer className={styles.footer}>
-          <span>BUILD TOGETHER. TRUST CAREFULLY.</span>
-          <span>CODEMAFIA · {isLive ? 'LIVE ROOM' : 'LOCAL PREVIEW'}</span>
-        </footer>
       </div>
     </main>
   );

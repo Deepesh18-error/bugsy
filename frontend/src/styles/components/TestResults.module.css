@@ -24,3 +24,18 @@
 .pending { color: #d8e49d; }
 .stale { color: #e7c46f; }
 @media (max-width: 680px) { .panelHeader { align-items: flex-start; flex-direction: column; } }
+.heading, .panelHeader h3 { font-family: 'Pixelify Sans', monospace; }
+.heading { font-size: 1.4rem; }
+.panel { border: 1px solid #625371; border-radius: 5px; background: #17151e; }
+.panelHeader h3 { font-size: 1.08rem; }
+.panelHeader button { border-color: #a4dca6; border-radius: 4px; background: #243b2b; color: #e7ffdc; }
+.panelHeader button:hover:not(:disabled) { background: #345841; }
+.panel > button { border-color: #e4c08e; border-radius: 4px; background: #433322; color: #ffe4b5; }
+.row { border-color: #554b61; background: #0c0d12; font-family: 'Space Mono', monospace; }
+.detail, .tag { color: #bdb0c5; }
+.detail { color: #ded3e2; font-size: .74rem; line-height: 1.6; }
+.row { font-size: .74rem; line-height: 1.5; }
+.tag { color: #d2c4d7; font-size: .62rem; }
+.panelHeader button, .panel > button { font-size: .69rem; }
+.pass { color: #a5dfad; }
+.fail, .error { color: #ff9ca2; }

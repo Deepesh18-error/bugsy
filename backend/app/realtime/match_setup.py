@@ -27,7 +27,7 @@ class MatchSetupPolicy:
     """Server-owned setup durations; both may be configured at composition time."""
 
     category_vote_seconds: int = 30
-    role_reveal_seconds: int = 8
+    role_reveal_seconds: int = 15
     coding_round_seconds: int = 180
     meeting_discussion_seconds: int = 30
     player_vote_seconds: int = 30

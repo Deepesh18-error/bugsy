@@ -13,7 +13,7 @@ from app.game.models import (
     RoomState, RoundEndReason, MAX_SABOTAGE_CREDITS,
 )
 from app.rooms.identity import normalize_display_name
-from app.rooms.avatars import DEFAULT_AVATAR_ID, validate_avatar_id
+from app.rooms.avatars import validate_avatar_id
 
 
 class ApiModel(BaseModel):
@@ -22,13 +22,13 @@ class ApiModel(BaseModel):
 
 class CreateRoomRequest(ApiModel):
     display_name: str = Field(max_length=96)
-    avatar_id: str = Field(default=DEFAULT_AVATAR_ID, max_length=32)
+    avatar_id: str | None = Field(default=None, max_length=32)
     capacity: Literal[4, 5] = 5
 
     @field_validator("avatar_id")
     @classmethod
-    def validate_avatar(cls, value: str) -> str:
-        return validate_avatar_id(value)
+    def validate_avatar(cls, value: str | None) -> str | None:
+        return validate_avatar_id(value) if value is not None else None
 
     @field_validator("display_name")
     @classmethod
@@ -39,12 +39,12 @@ class CreateRoomRequest(ApiModel):
 class JoinRoomRequest(ApiModel):
     room_code: str = Field(min_length=1, max_length=32)
     display_name: str = Field(max_length=96)
-    avatar_id: str = Field(default=DEFAULT_AVATAR_ID, max_length=32)
+    avatar_id: str | None = Field(default=None, max_length=32)
 
     @field_validator("avatar_id")
     @classmethod
-    def validate_avatar(cls, value: str) -> str:
-        return validate_avatar_id(value)
+    def validate_avatar(cls, value: str | None) -> str | None:
+        return validate_avatar_id(value) if value is not None else None
 
     @field_validator("display_name")
     @classmethod

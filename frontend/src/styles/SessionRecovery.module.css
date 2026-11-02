@@ -1,0 +1,30 @@
+.page {
+  width: min(100% - 2rem, 560px);
+  margin: clamp(3rem, 12vh, 7rem) auto;
+  padding: 1.5rem;
+  border: 1px solid #735749;
+  border-radius: 12px;
+  background: #1c1818;
+  color: #eee7d8;
+  font-family: 'Space Mono', 'Cascadia Mono', monospace;
+}
+
+.page h1 {
+  margin: 0 0 1.25rem;
+  font-family: 'Pixelify Sans', 'Cascadia Mono', monospace;
+  font-size: clamp(1.8rem, 5vw, 2.5rem);
+}
+
+.action {
+  margin-top: 1.25rem;
+  padding: 0.8rem 1.2rem;
+  border: 2px solid #e3b775;
+  border-radius: 6px;
+  background: #e3b775;
+  color: #211711;
+  cursor: pointer;
+  font: 700 1rem 'Space Mono', 'Cascadia Mono', monospace;
+}
+
+.action:hover { background: #f1cb91; }
+.action:focus-visible { outline: 3px solid #f1cb91; outline-offset: 3px; }

@@ -215,6 +215,70 @@ class RecoveryTests(unittest.TestCase):
         self.assertEqual(results[0].state.chat_messages, chat.state.chat_messages)
         self.assertEqual(len(self.rooms.stored.state.players), 3)
 
+    def test_join_assigns_a_free_character_when_none_is_chosen(self) -> None:
+        service = RoomService(self.rooms)
+        results = []
+
+        async def join() -> None:
+            results.append(await service.join_room(self.code, "Cia", join_subject="test"))
+
+        run_socket(join())
+        self.assertEqual(results[0].state.players[-1].avatar_id, "search-builder")
+        self.assertEqual(self.rooms.stored.state.players[-1].avatar_id, "search-builder")
+
+    def test_join_rejects_a_character_already_in_the_room(self) -> None:
+        service = RoomService(self.rooms)
+        failures = []
+
+        async def join() -> None:
+            try:
+                await service.join_room(self.code, "Cia", join_subject="test", avatar_id="linux-builder")
+            except RoomServiceError as error:
+                failures.append((error.code, error.status_code))
+
+        run_socket(join())
+        self.assertEqual(failures, [("CHARACTER_TAKEN", 409)])
+        self.assertEqual(len(self.rooms.stored.state.players), 2)
+
+    def test_simultaneous_joins_cannot_claim_the_same_character(self) -> None:
+        class RacingRepository(FakeRepository):
+            def __init__(self):
+                super().__init__()
+                self.raced = False
+
+            async def compare_and_swap(self, previous, updated, **kwargs):
+                if not self.raced:
+                    self.raced = True
+                    self.stored = replace(
+                        self.stored,
+                        state=replace(self.stored.state, players=(
+                            *self.stored.state.players,
+                            replace(updated.players[-1], display_name="Dee"),
+                        )),
+                        raw=b"competing-join",
+                    )
+                    return False
+                return await super().compare_and_swap(previous, updated, **kwargs)
+
+        repository = RacingRepository()
+        service = RoomService(repository)
+
+        async def join():
+            try:
+                return await service.join_room(self.code, "Cia", join_subject="test", avatar_id="apollo-coder")
+            except RoomServiceError as error:
+                return error
+
+        outcome = []
+
+        async def collect():
+            outcome.append(await join())
+
+        run_socket(collect())
+        self.assertIsInstance(outcome[0], RoomServiceError)
+        self.assertEqual(outcome[0].code, "CHARACTER_TAKEN")
+        self.assertEqual(sum(player.avatar_id == "apollo-coder" for player in repository.stored.state.players), 1)
+
     def test_timed_out_run_becomes_error_once(self) -> None:
         now = datetime.now(timezone.utc)
         run = OfficialRunProgress(

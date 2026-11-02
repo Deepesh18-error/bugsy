@@ -182,10 +182,11 @@ export function createRoomCode() {
 }
 
 export function buildPreviewRoom(displayName, roomCode, isCreating, avatarId = 'linux-builder') {
+  const previewAvatarId = avatarId || 'linux-builder';
   const localPlayer = {
     id: 'local-player',
     name: displayName,
-    avatarId,
+    avatarId: previewAvatarId,
     isYou: true,
     isDemo: false,
     ready: false,

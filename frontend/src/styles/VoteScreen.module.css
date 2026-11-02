@@ -63,3 +63,37 @@
   .submitButton { width: 100%; }
   .footer { flex-direction: column; font-size: 0.5rem; }
 }
+
+/* The ballot chamber uses violet and signal green, away from the lobby palette. */
+.page { position: relative; isolation: isolate; overflow: hidden; background: #050409; color: #f1edfa; font-family: 'Space Mono', monospace; }
+.page::before { position: absolute; z-index: -1; inset: 0; background: radial-gradient(circle at 10% 22%, #d6caed 0 2px, transparent 3px), radial-gradient(circle at 90% 12%, #f1d58f 0 1px, transparent 2px), radial-gradient(circle at 83% 76%, #a5ddb9 0 2px, transparent 3px), radial-gradient(circle at 26% 68%, #baaccb 0 1px, transparent 2px); content: ''; pointer-events: none; }
+.page::after { position: absolute; z-index: -1; bottom: 6rem; left: -6rem; width: 18rem; height: 18rem; border: 3px solid #594570; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #665081, #20162a 68%); box-shadow: 0 0 0 16px #110d18; content: ''; opacity: .75; pointer-events: none; }
+.frame { position: relative; }
+.topbar, .footer { border-color: #58456b; }
+.brand { color: #f0e1fa; font: 700 1.45rem 'Pixelify Sans', monospace; letter-spacing: .03em; }
+.brandMark { border-color: #b992e7; border-radius: 4px; color: #d4aafd; transform: none; }
+.roomMeta strong { border-color: #6b5581; color: #d5b7f9; }
+.heading h1 { font: 700 clamp(2.6rem, 6vw, 4.7rem)/.95 'Pixelify Sans', monospace; letter-spacing: .02em; text-shadow: 4px 4px #39204c; }
+.heading h1 span, .eyebrow { color: #c8a0f5; }
+.intro { color: #c9bed3; }
+.ballotPanel, .resultPanel { width: min(100%, 690px); border: 2px solid #73578b; border-radius: 10px; background: #120f18; box-shadow: 6px 6px 0 #22122e; }
+.panelHeader h2, .resultPanel h2 { font-family: 'Pixelify Sans', monospace; font-size: 1.45rem; }
+.panelEyebrow { color: #bda6cf; }
+.voterCount { border-color: #765a8f; color: #ddc4f5; }
+.candidate, .skipButton { border-color: #5a496c; border-radius: 5px; background: #1d1726; }
+.candidate:hover { border-color: #b591db; background: #292037; }
+.candidate.selected, .skipSelected { border-color: #adf0ad; background: #1d3026; box-shadow: inset 4px 0 #adf0ad; }
+.selected .selectionMark, .skipSelected .selectionMark { color: #adf0ad; }
+.candidateName { font: 700 1.1rem 'Pixelify Sans', monospace; }
+.submitButton, .continueButton { border-color: #9fdea9; background: #243c2a; color: #d9ffce; }
+.submitButton:hover:not(:disabled), .continueButton:hover { background: #34573b; }
+.tally { border-color: #574667; background: #0d0c13; }
+.tallyRow strong { color: #b9efb9; }
+.footer { color: #b7a3c4; }
+@media (prefers-reduced-motion: no-preference) { .page::after { animation: ballotDrift 10s ease-in-out infinite alternate; } }
+@keyframes ballotDrift { to { transform: translate(10px, -8px); } }
+.spectatorNotice { margin: 0; padding: 10px 14px; border: 1px solid #a787c3; border-radius: 5px; background: #21192c; color: #ead6f6; font-size: .72rem; text-align: center; }
+.resultPanel { text-align: center; }
+.ejectedCharacter { width: 92px; height: 122px; margin: 0 auto 12px; filter: drop-shadow(0 0 15px #79528b); }
+.resultPanel h2 { color: #e6c4fb; font-size: clamp(1.5rem, 4vw, 2.4rem); }
+.resultPanel .tally { text-align: left; }

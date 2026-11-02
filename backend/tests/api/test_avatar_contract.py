@@ -12,6 +12,10 @@ from app.rooms.serialization import deserialize_room, serialize_room
 
 
 class AvatarContractTests(unittest.TestCase):
+    def test_omitted_character_requests_automatic_assignment(self):
+        self.assertIsNone(CreateRoomRequest(display_name="Ada").avatar_id)
+        self.assertIsNone(JoinRoomRequest(display_name="Ada", room_code="ABCDEFG2").avatar_id)
+
     def test_rejects_unknown_character_id(self):
         with self.assertRaises(ValidationError):
             CreateRoomRequest(display_name="Ada", avatar_id="unknown")

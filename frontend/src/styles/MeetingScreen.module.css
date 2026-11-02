@@ -74,3 +74,34 @@
   .messages { min-height: 120px; }
   .footer { flex-direction: column; font-size: 0.5rem; }
 }
+
+/* Emergency signal: a red warning layer over the black crew terminal. */
+.page { position: relative; isolation: isolate; overflow: hidden; background: #050508; color: #f2eee7; font-family: 'Space Mono', monospace; }
+.page::before { position: absolute; z-index: -1; inset: 0; background: radial-gradient(circle at 8% 18%, #d8dbe9 0 2px, transparent 3px), radial-gradient(circle at 88% 25%, #e7a97b 0 2px, transparent 3px), radial-gradient(circle at 74% 72%, #a5a5db 0 1px, transparent 2px), radial-gradient(circle at 24% 80%, #eee 0 1px, transparent 2px); content: ''; pointer-events: none; }
+.page::after { position: absolute; z-index: -1; top: 13rem; right: -6rem; width: 18rem; height: 18rem; border: 4px solid #4f2433; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #622c42, #1b101d 68%); box-shadow: 0 0 0 22px #0e0b13; content: ''; opacity: .72; pointer-events: none; }
+.frame { position: relative; width: min(100% - 36px, 1200px); }
+.topbar, .footer { border-color: #5c3546; }
+.brand { color: #f7dfc4; font: 700 1.45rem 'Pixelify Sans', monospace; letter-spacing: .03em; }
+.brandMark { border-color: #e66d75; border-radius: 4px; color: #ee8b8c; transform: none; }
+.roomMeta strong { border-color: #7b4955; color: #f3ad8e; }
+.content { gap: 24px; padding-top: 28px; }
+.eyebrow { color: #fa8791; }
+.heading h1 { color: #f5ece2; font: 700 clamp(2.8rem, 7vw, 5.3rem)/.9 'Pixelify Sans', monospace; letter-spacing: .025em; text-shadow: 5px 5px #481927; }
+.heading h1 span { color: #fa6c79; }
+.intro { color: #d5bfc5; font-size: .78rem; }
+.discussionPanel, .rosterPanel { border: 2px solid #764351; border-radius: 10px; background: #111014; box-shadow: 6px 6px 0 #240e1b; }
+.panelEyebrow { color: #e9999e; }
+.panelHeader h2 { font: 700 1.35rem 'Pixelify Sans', monospace; }
+.timer { border-color: #aa5964; background: #251319; }
+.timer strong, .playerCount { color: #ffb596; }
+.contextCard { border-color: #5d3b4d; background: #1e1722; }
+.contextIcon { background: #4a2837; color: #ffc18f; }
+.guideline { border-color: #604051; background: #231720; }
+.guideline > span { color: #ffab93; }
+.guideline p { color: #dcc7ca; }
+.resumeButton { border-color: #f28480; background: #4b1d2b; color: #ffe6d8; }
+.resumeButton:hover { background: #673143; }
+.footer { color: #bb9aa4; }
+@media (prefers-reduced-motion: no-preference) { .page::after { animation: emergencyDrift 8s ease-in-out infinite alternate; } }
+@keyframes emergencyDrift { to { transform: translate(-12px, 9px) rotate(5deg); } }
+.spectatorNotice { max-width: 58ch; margin: 0; padding: 10px 14px; border: 1px solid #b88ab5; border-radius: 5px; background: #251a2d; color: #f1d8f3; font-size: .72rem; text-align: center; }

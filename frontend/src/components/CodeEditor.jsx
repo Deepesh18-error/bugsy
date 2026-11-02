@@ -41,6 +41,7 @@ export default function CodeEditor({
   label = 'Shared Python code',
   language = 'python',
   preferAccessibleEditor = false,
+  fillHeight = false,
 }) {
   const containerRef = useRef(null);
   const editorRef = useRef(null);
@@ -99,7 +100,7 @@ export default function CodeEditor({
   }
 
   return (
-    <div className={styles.wrapper}>
+    <div className={`${styles.wrapper} ${fillHeight ? styles.fillHeight : ''}`}>
       {preferAccessibleEditor ? (
         <textarea
           className={styles.textarea}

@@ -1,14 +1,16 @@
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ROOM_CODE_CHARACTERS, ROOM_CODE_LENGTH } from '../api/rooms.js';
-import { CHARACTERS, DEFAULT_CHARACTER_ID, getCharacter } from '../data/characters.js';
+import { CHARACTERS, getCharacter } from '../data/characters.js';
 import CharacterSprite from '../components/CharacterSprite.jsx';
 import styles from '../styles/WelcomeScreen.module.css';
 
 export default function WelcomeScreen({ onCreateRoom, onJoinRoom, onPreview, restoreError, onRetryResume, canRetryResume = true, isRestoring }) {
   const [mode, setMode] = useState(null);
   const [displayName, setDisplayName] = useState('');
-  const [avatarId, setAvatarId] = useState(DEFAULT_CHARACTER_ID);
+  const [avatarId, setAvatarId] = useState(null);
   const [inspectedAvatarId, setInspectedAvatarId] = useState(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [characterError, setCharacterError] = useState('');
   const [roomCode, setRoomCode] = useState('');
   const [nameError, setNameError] = useState('');
   const [joinError, setJoinError] = useState('');
@@ -17,6 +19,50 @@ export default function WelcomeScreen({ onCreateRoom, onJoinRoom, onPreview, res
   const consoleRef = useRef(null);
   const revealRef = useRef(null);
   const pageRef = useRef(null);
+  const pickerRef = useRef(null);
+  const pickerTriggerRef = useRef(null);
+
+  useEffect(() => {
+    const syncMode = () => {
+      const historyMode = window.history.state?.bugsyWelcomeMode;
+      setMode(historyMode === 'create' || historyMode === 'join' ? historyMode : null);
+      setPickerOpen(false);
+      setNameError('');
+      setJoinError('');
+    };
+    syncMode();
+    window.addEventListener('popstate', syncMode);
+    return () => window.removeEventListener('popstate', syncMode);
+  }, []);
+
+  useEffect(() => {
+    if (!pickerOpen) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    pickerRef.current?.focus();
+    function handlePickerKey(event) {
+      if (event.key === 'Escape') {
+        setPickerOpen(false);
+        return;
+      }
+      if (event.key !== 'Tab' || !pickerRef.current) return;
+      const controls = [...pickerRef.current.querySelectorAll('button:not(:disabled)')];
+      if (!controls.length) return;
+      const first = controls[0];
+      const last = controls[controls.length - 1];
+      if (event.shiftKey && (document.activeElement === first || document.activeElement === pickerRef.current)) {
+        event.preventDefault(); last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault(); first.focus();
+      }
+    }
+    window.addEventListener('keydown', handlePickerKey);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', handlePickerKey);
+      pickerTriggerRef.current?.focus();
+    };
+  }, [pickerOpen]);
 
   useLayoutEffect(() => {
     const fitHatch = () => {
@@ -51,9 +97,28 @@ export default function WelcomeScreen({ onCreateRoom, onJoinRoom, onPreview, res
   }
 
   function chooseMode(nextMode) {
+    if (nextMode === null && window.history.state?.bugsyWelcomeMode) {
+      window.history.back();
+      return;
+    }
+    if (nextMode !== null) {
+      window.history.pushState({ ...window.history.state, bugsyWelcomeMode: nextMode }, '', window.location.href);
+    }
     setMode(nextMode);
     setNameError('');
     setJoinError('');
+  }
+
+  function openPicker() {
+    setInspectedAvatarId(null);
+    setPickerOpen(true);
+  }
+
+  function chooseAvatar(nextAvatarId) {
+    setAvatarId(nextAvatarId);
+    setCharacterError('');
+    setJoinError('');
+    setPickerOpen(false);
   }
 
   async function handleSubmit(event) {
@@ -74,7 +139,10 @@ export default function WelcomeScreen({ onCreateRoom, onJoinRoom, onPreview, res
       if (mode === 'join') await onJoinRoom(name, roomCode, avatarId);
       else await onCreateRoom(name, avatarId);
     } catch (error) {
-      if (mode === 'join') setJoinError(error.message);
+      if (error.code === 'CHARACTER_TAKEN') {
+        setCharacterError(error.message);
+        openPicker();
+      } else if (mode === 'join') setJoinError(error.message);
       else setNameError(error.message);
     } finally { setIsSubmitting(false); }
   }
@@ -115,24 +183,12 @@ export default function WelcomeScreen({ onCreateRoom, onJoinRoom, onPreview, res
                   placeholder="8-character code" spellCheck="false" value={roomCode} aria-invalid={Boolean(joinError)} />
                 {joinError && <p className={styles.error} role="alert">{joinError}</p>}
               </>}
-              <fieldset className={styles.characterPicker} disabled={isSubmitting || isRestoring}>
-                <legend className={styles.fieldLabel}>Choose your character</legend>
-                <div className={styles.characterGrid}>
-                  {CHARACTERS.map((character) => (
-                    <label className={`${styles.characterChoice} ${avatarId === character.id ? styles.characterSelected : ''}`} key={character.id}
-                      onFocus={() => setInspectedAvatarId(character.id)} onBlur={() => setInspectedAvatarId(null)}
-                      onMouseEnter={() => setInspectedAvatarId(character.id)} onMouseLeave={() => setInspectedAvatarId(null)}
-                      title={`${character.inspiration} · ${character.note}`}>
-                      <input checked={avatarId === character.id} name="avatar-id" onChange={() => setAvatarId(character.id)} type="radio" value={character.id} />
-                      <CharacterSprite animate={avatarId === character.id} decorative id={character.id} state={avatarId === character.id ? 'selected' : 'idle'} />
-                      <span>{character.name}</span>
-                    </label>
-                  ))}
-                </div>
-                <p className={styles.characterCredit} id="character-credit">Inspired by <strong>{getCharacter(inspectedAvatarId || avatarId).inspiration}</strong> · {getCharacter(inspectedAvatarId || avatarId).note}
-                  {(inspectedAvatarId || avatarId) === 'ledger-architect' && '. Fictional design; no verified likeness exists.'}
-                </p>
-              </fieldset>
+              <button aria-label={avatarId ? 'Change character' : 'Choose character'} className={styles.characterTrigger} disabled={isSubmitting || isRestoring} onClick={openPicker} ref={pickerTriggerRef} type="button">
+                {avatarId ? <CharacterSprite decorative id={avatarId} state="selected" /> : <span className={styles.autoAvatar} aria-hidden="true">?</span>}
+                <span><strong>{avatarId ? getCharacter(avatarId).name : 'Automatic character'}</strong><small>{avatarId ? 'Change character' : 'Choose character'}</small></span>
+                <span aria-hidden="true">→</span>
+              </button>
+              <p className={styles.autoHint}>If you skip this, an available character is assigned when you enter the room.</p>
               <button className={styles.primaryButton} disabled={isSubmitting || isRestoring} type="submit">{isSubmitting ? 'Connecting…' : mode === 'create' ? 'Create a room' : 'Join'} <span aria-hidden="true">→</span></button>
             </form>
           )}
@@ -142,6 +198,26 @@ export default function WelcomeScreen({ onCreateRoom, onJoinRoom, onPreview, res
       </div>
       <div className={styles.spaceDecor} aria-hidden="true"><span className={styles.planet} /><span className={styles.asteroid} /><span className={styles.asteroid} /><span className={styles.star} /><span className={styles.star} /><span className={styles.star} /><span className={styles.star} /></div>
       <div className={styles.flashlight} aria-hidden="true" />
+      {pickerOpen && <div className={styles.pickerBackdrop} onMouseDown={(event) => { if (event.target === event.currentTarget) setPickerOpen(false); }}>
+        <section aria-label="Choose your character" aria-modal="true" className={styles.pickerDialog} ref={pickerRef} role="dialog" tabIndex={-1}>
+          <header className={styles.pickerHeader}>
+            <div><span>CREW ROSTER</span><h2>Choose your character</h2></div>
+            <button aria-label="Close character picker" className={styles.pickerClose} onClick={() => setPickerOpen(false)} type="button">×</button>
+          </header>
+          {characterError && <p className={styles.pickerError} role="alert">{characterError}</p>}
+          <div className={styles.pickerGrid}>
+            {CHARACTERS.map((character) => <button aria-pressed={avatarId === character.id} className={`${styles.pickerCard} ${avatarId === character.id ? styles.pickerSelected : ''}`} key={character.id}
+              onClick={() => chooseAvatar(character.id)} onFocus={() => setInspectedAvatarId(character.id)} onMouseEnter={() => setInspectedAvatarId(character.id)} type="button">
+              <CharacterSprite animate={avatarId === character.id} className={styles.pickerSprite} decorative id={character.id} state={avatarId === character.id ? 'selected' : 'idle'} />
+              <strong>{character.name}</strong><span className={styles.pickerCardCredit}>Inspired by {character.inspiration}<br />{character.note}</span>
+            </button>)}
+          </div>
+          <footer className={styles.pickerFooter}>
+            <p id="character-credit">{inspectedAvatarId ? <>Inspired by <strong>{getCharacter(inspectedAvatarId).inspiration}</strong> · {getCharacter(inspectedAvatarId).note}</> : 'Hover or focus a character to learn who inspired it.'}</p>
+            <button className={styles.autoPickButton} onClick={() => chooseAvatar(null)} type="button">Let Bugsy assign one</button>
+          </footer>
+        </section>
+      </div>}
     </main>
   );
 }

@@ -45,3 +45,10 @@
   .lobby { min-height: 66px; gap: 8px; padding-inline: 8px; }
   .lobby .avatar { width: 34px; height: 34px; border-radius: 10px; }
 }
+.compact { padding: 8px 3px; border-bottom: 1px solid #483f50; }
+.compact .characterAvatar { width: 42px; height: 56px; margin-block: -7px; }
+.name { color: #f0e8ed; font-family: 'Space Mono', monospace; }
+.hostBadge { border-color: #b699cb; color: #dcb9f4; }
+.connection { color: #b7aaba; }
+.eliminated { color: #ff9ba4; }
+.disconnected { color: #f1c47e; }

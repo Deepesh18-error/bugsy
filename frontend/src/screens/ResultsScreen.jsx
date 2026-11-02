@@ -22,12 +22,12 @@ export default function ResultsScreen({
   const resultLabel = isMatchResult ? 'MATCH COMPLETE' : 'ROUND COMPLETE';
 
   return (
-    <main className={styles.page}>
+    <main className={`${styles.page} ${isMatchResult ? (result.outcomeLabel === 'CIVILIAN WIN' ? styles.civilianWin : styles.impostorWin) : styles.roundEnd}`}>
       <div className={styles.frame}>
         <header className={styles.topbar}>
           <a className={styles.brand} href="#results">
             <span className={styles.brandMark} aria-hidden="true">CM</span>
-            <span>codemafia</span>
+            <span>BUGSY</span>
           </a>
           <div className={styles.roomMeta}>
             <span>ROOM</span>
@@ -43,7 +43,7 @@ export default function ResultsScreen({
           <p className={`${styles.eyebrow} ${isMatchResult ? styles.matchEyebrow : ''}`}>
             {resultLabel} · ROUND {roundNumber}/{totalRounds}
           </p>
-          <h1 id="results-title">{result.headline}</h1>
+          <h1 id="results-title">{isMatchResult ? result.outcomeLabel === 'CIVILIAN WIN' ? 'CIVILIANS WIN' : 'IMPOSTOR WINS' : 'ROUND COMPLETE'}</h1>
           <p className={styles.description}>{result.description}</p>
 
           <section className={styles.summaryCard} aria-labelledby="summary-title">
@@ -97,7 +97,7 @@ export default function ResultsScreen({
 
         <footer className={styles.footer}>
           <span>BUILD TOGETHER. TRUST CAREFULLY.</span>
-          <span>CODEMAFIA · {isLive ? 'LIVE ROOM' : 'LOCAL PREVIEW'}</span>
+          <span>BUGSY · {isLive ? 'LIVE ROOM' : 'LOCAL PREVIEW'}</span>
         </footer>
       </div>
     </main>

@@ -47,7 +47,7 @@ export default function VoteScreen({
         <header className={styles.topbar}>
           <a className={styles.brand} href="#vote">
             <span className={styles.brandMark} aria-hidden="true">CM</span>
-            <span>codemafia</span>
+            <span>BUGSY</span>
           </a>
           <div className={styles.roomMeta}>
             <span>ROOM</span>
@@ -58,7 +58,7 @@ export default function VoteScreen({
         <section className={styles.content} id="vote">
           <div className={styles.heading}>
             <p className={styles.eyebrow}>MEETING · BALLOT {isLive && `· ${secondsLeft}s remaining`}</p>
-            <h1>{voteResult ? 'The vote is in.' : <>Who should leave<br /><span>the room?</span></>}</h1>
+            <h1>{voteResult ? 'VOTE RESULT' : <>WHO IS THE<br /><span>IMPOSTOR?</span></>}</h1>
             <p className={styles.intro}>
               {voteResult
                 ? 'The group result is shown below. Individual ballots stay private.'
@@ -69,6 +69,8 @@ export default function VoteScreen({
                 : secondsLeft === 0 ? 'Voting time has ended.' : ''}
             </span>}
           </div>
+
+          {!ownPlayer?.isAlive && <p className={styles.spectatorNotice} role="status">SPECTATOR MODE · You can watch the ballot, but cannot vote.</p>}
 
           {!voteResult ? (
             <section className={styles.ballotPanel} aria-labelledby="ballot-title">
@@ -139,6 +141,7 @@ export default function VoteScreen({
           ) : (
             <section className={styles.resultPanel} aria-labelledby="result-title" aria-live="polite">
               <p className={styles.panelEyebrow}>VOTE RESULT</p>
+              {ejectedPlayer?.avatarId && <CharacterSprite className={styles.ejectedCharacter} decorative id={ejectedPlayer.avatarId} state="loss" />}
               <h2 id="result-title">
                 {voteResult.reason === 'tie' && 'The vote was tied.'}
                 {voteResult.reason === 'all-skipped' && 'Everyone skipped.'}
@@ -187,7 +190,7 @@ export default function VoteScreen({
 
         <footer className={styles.footer}>
           <span>ONE BALLOT · PRIVATE UNTIL RESOLUTION</span>
-          <span>CODEMAFIA · {isLive ? 'LIVE ROOM' : 'LOCAL PREVIEW'}</span>
+          <span>BUGSY · {isLive ? 'LIVE ROOM' : 'LOCAL PREVIEW'}</span>
         </footer>
       </div>
     </main>

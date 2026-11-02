@@ -8,3 +8,8 @@
 .status { color: #f4c4b8; font-family: var(--font-mono); font-size: .56rem; text-transform: uppercase; }
 .status[data-status="completed"] { color: var(--color-mint); }
 @media (max-width: 720px) { .panel { padding: 12px; } }
+.panel { border: 2px solid #994755; border-radius: 5px; background: #26131b; }
+.panel h2 { color: #ffe0df; font: 700 1.2rem 'Pixelify Sans', monospace; }
+.item { border-color: #8b4b58; border-radius: 4px; background: #170e15; }
+.status[data-status="completed"] { color: #a7e2a6; }
+.note, .item p { font-size: .76rem; line-height: 1.6; }

@@ -119,7 +119,7 @@ async def lifespan(app: FastAPI):
         repository, app.state.room_connection_manager,
         setup_policy=MatchSetupPolicy(
             category_vote_seconds=int(os.getenv("CODEMAFIA_CATEGORY_VOTE_SECONDS", "30")),
-            role_reveal_seconds=int(os.getenv("CODEMAFIA_ROLE_REVEAL_SECONDS", "8")),
+            role_reveal_seconds=int(os.getenv("CODEMAFIA_ROLE_REVEAL_SECONDS", "15")),
             coding_round_seconds=int(os.getenv("CODEMAFIA_CODING_ROUND_SECONDS", "180")),
             meeting_discussion_seconds=int(os.getenv("CODEMAFIA_MEETING_DISCUSSION_SECONDS", "30")),
             player_vote_seconds=int(os.getenv("CODEMAFIA_PLAYER_VOTE_SECONDS", "30")),

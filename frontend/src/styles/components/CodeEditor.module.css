@@ -2,6 +2,20 @@
   min-width: 0;
 }
 
+.fillHeight {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.fillHeight .monaco,
+.fillHeight .textarea {
+  min-height: 300px;
+  height: auto;
+  flex: 1;
+}
+
 .monaco,
 .textarea {
   display: block;
